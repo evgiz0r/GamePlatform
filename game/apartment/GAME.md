@@ -32,9 +32,15 @@ to the mirpeset, parents' room with its own shower room.
   (or space) turns it, arrows nudge it. It will not go into a wall, out of the flat or onto
   another piece: let go there and it jumps back. Tap the floor to put it down.
 
+- Outside: the flat is on the third floor of a street building, with a mirpeset you can
+  walk onto and the street, trees and cars below. Behind it is the stairwell with a lift;
+  the film starts on the street, rides the lift up and walks into the flat.
+- Two garden flats (the last two levels): the same flats on the ground floor with a fenced
+  garden (lawn, path, trees, a table, a lounger); the film walks in from the garden gate.
+
 ## Later (said, not built)
 
 - Decorate a flat: add and remove furniture, keep the result (moving is built).
-- A whole building: walk in from the stairwell (the plans for buildings exist in
+- A whole building: more than one flat to walk into (the plans for buildings exist in
   lab/apartments/building.py).
-- The view of the city from the windows.
+- The view of the real city from the windows (now a made-up street).

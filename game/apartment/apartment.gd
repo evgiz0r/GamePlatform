@@ -23,6 +23,8 @@ const LEVELS := [
 	{"name": "flat 6: 4 rooms, 127 m2 + 14 m2 mirpeset", "plan": "plan_6"},
 	{"name": "flat 7: 4 rooms, 102 m2 + 13 m2 mirpeset", "plan": "plan_7"},
 	{"name": "flat 8: 4 rooms, 103 m2 + 9 m2 mirpeset", "plan": "plan_8"},
+	{"name": "garden flat: flat 2 on the ground floor", "plan": "plan_2", "floor": 0},
+	{"name": "garden flat: flat 5 on the ground floor", "plan": "plan_5", "floor": 0},
 ]
 
 const H := 2.7              ## floor to ceiling
@@ -102,6 +104,7 @@ func start(config: Dictionary) -> void:
 	var n := clampi(int(config.get("level", 1)), 1, LEVELS.size())
 	var f := FileAccess.open("res://game/apartment/plans/%s.json" % LEVELS[n - 1]["plan"], FileAccess.READ)
 	plan = JSON.parse_string(f.get_as_text())
+	FLOOR_UP = int(LEVELS[n - 1].get("floor", 3))
 	var size := Vector2(plan["size"][0], plan["size"][1])
 	_off = -size / 2.0
 	world_area = Rect2(-size.x / 2 - 1, -size.y / 2 - 1, size.x + 2, size.y + 2)
@@ -242,6 +245,9 @@ func _wall(wr: Array) -> void:
 		"door":
 			box.call(DOOR_H, H, C_WALL)
 		"rail":
+			if FLOOR_UP == 0:
+				box.call(0.0, 0.08, C_EXT)   # a garden flat's terrace: a kerb, then the lawn
+				return
 			# a low parapet, glass above it and a metal handrail on top
 			box.call(0.0, 0.25, C_EXT)
 			box.call(0.25, 1.02, C_GLASS, 0.01)
@@ -615,10 +621,20 @@ func _where() -> void:
 ## Every room once, to its middle, in order along the flat, then back to where it began.
 ## The way between is found on a 20 cm grid of where the walker fits (AStarGrid2D), so the
 ## tour goes through doors and round the furniture by itself.
-func _start_tour(from_street := false) -> void:
+func _start_tour(from_street := false, from_gate := false) -> void:
 	_tour.clear()
 	_make_grid()
 	var here := _pos
+	if from_gate:
+		_tour.append(_gate + Vector2(0, 0.6))
+		_tour.append(Vector2(_gate.x, _hz + 1.0))
+		_tour.append({"look": true, "say": "the garden"})
+		for d in plan["doors"]:
+			if d["style"] == "slider":
+				var m := (float(d["a"]) + float(d["b"])) / 2.0
+				_tour.append(_w(m, float(d["line"]) + 1.0))
+				here = _w(m, float(d["line"]) - 1.2)
+		_tour.append(here)
 	if from_street:
 		# from the pavement, under the building, through the lobby door, into the lift,
 		# up to the flat's floor, across the landing and in at the front door
@@ -654,6 +670,18 @@ func _start_tour(from_street := false) -> void:
 				picks.append(i)
 		picks.sort_custom(func(p, q): return INTEREST.get(items[p]["name"], 0) > INTEREST.get(items[q]["name"], 0))
 		picks = picks.slice(0, 2)
+		if r["kind"] == "mirpeset" and FLOOR_UP == 0:
+			# a garden flat: out over the terrace onto the lawn, and look round the garden
+			var rcg: Array = r["rect"]
+			var ter := _w((rcg[0] + rcg[2]) / 2.0, (rcg[1] + rcg[3]) / 2.0)
+			var legg := _path(from, ter)
+			_tour.append_array(legg)
+			_tour.append(Vector2(ter.x, _hz + 2.0))
+			_tour.append({"look": true, "say": "the garden"})
+			_tour.append(Vector2(ter.x, _hz + 0.2))
+			_tour.append(ter)
+			from = ter
+			continue
 		if r["kind"] == "mirpeset":
 			# out on the balcony: to the rail, and look out over the street
 			var rc: Array = r["rect"]
@@ -762,6 +790,10 @@ func _head(delta: float) -> void:
 	if touring and _tour[0] is Dictionary and _tour[0].has("look_at_point"):
 		var lp: Vector3 = _tour[0]["look_at_point"]
 		want_p = atan2(lp.y - (_y + EYE), maxf(Vector2(lp.x, lp.z).distance_to(_pos), 0.3))
+		_caption(-1)
+		_look_label.text = "looking at " + str(_tour[0]["say"])
+		_said = -3
+	elif touring and _tour[0] is Dictionary and _tour[0].has("say"):
 		_caption(-1)
 		_look_label.text = "looking at " + str(_tour[0]["say"])
 		_said = -3
@@ -1016,11 +1048,19 @@ func film_ready() -> bool:
 		_filming = true
 		_doll = false   # eye level from the first frame to the last (Evgeni: "not from the top")
 		# from the street: under the building, the lobby, the lift, then the flat
-		_pos = Vector2(_core.get_center().x + 2.0, _hz + 6.0)
-		_y = _g0
-		_yaw = 0.0
-		_cab.position.y = _g0     # the lift waits on the entrance floor
-		_start_tour(true)
+		if FLOOR_UP == 0:
+			# a garden flat: from the pavement, in at the garden gate, up the path, in
+			# through the salon's glass door
+			_pos = _gate + Vector2(0, 2.5)
+			_y = 0.0
+			_yaw = 0.0
+			_start_tour(false, true)
+		else:
+			_pos = Vector2(_core.get_center().x + 2.0, _hz + 6.0)
+			_y = _g0
+			_yaw = 0.0
+			_cab.position.y = _g0     # the lift waits on the entrance floor
+			_start_tour(true)
 	return _loaded
 
 func film_mode(on: bool) -> void:
@@ -1074,7 +1114,8 @@ func _make_item(it: Dictionary) -> void:
 ## blocks across the road; more blocks to the sides and behind. All boxes merged by colour
 ## (a few draws) plus a handful of Kenney trees and cars.
 
-const FLOOR_UP := 3                ## which floor the flat is on
+var FLOOR_UP := 3                  ## which floor the flat is on (0: a garden flat)
+const GARDEN_D := 6.0              ## how far a garden flat's garden reaches past the plan
 const STOREY := 3.0
 const C_PLASTER := [Color(0.92, 0.89, 0.82), Color(0.86, 0.84, 0.80), Color(0.90, 0.86, 0.76),
 	Color(0.80, 0.80, 0.78), Color(0.93, 0.91, 0.87)]
@@ -1125,16 +1166,18 @@ func _build_core(g0: float) -> void:
 		_core_solid.append(r)
 	_box(Vector3(x0 - t, top, z0 - t), Vector3(x1 + t, top + 0.2, z1), wc)     # its roof
 	# the front wall below the flat: the lobby door on the entrance floor, closed above
-	var door_w := 1.4
-	_box(Vector3(x0, g0, z1 - 0.1), Vector3(dx - door_w / 2, g0 + STOREY, z1 + 0.1), wc)
-	_box(Vector3(dx + door_w / 2, g0, z1 - 0.1), Vector3(x1, g0 + STOREY, z1 + 0.1), wc)
-	_box(Vector3(dx - door_w / 2, g0 + 2.3, z1 - 0.1), Vector3(dx + door_w / 2, g0 + STOREY, z1 + 0.1), wc)
-	_box(Vector3(dx - door_w / 2, g0, z1 - 0.03), Vector3(dx - 0.05, g0 + 2.3, z1 + 0.03), C_GLASS)
-	_ground_solid.append(Rect2(x0, z1 - 0.1, dx - door_w / 2 - x0, 0.2))
-	_ground_solid.append(Rect2(dx + door_w / 2, z1 - 0.1, x1 - dx - door_w / 2, 0.2))
-	_box(Vector3(x0, g0 + STOREY, z1 - 0.1), Vector3(x1, -0.06, z1 + 0.1), wc)
-	_mid_solid.append(Rect2(x0, z1 - 0.1, CORE_W, 0.2))
-	for k in [1, 2]:    # the neighbours' front doors on the floors between
+	# (a garden flat is on the entrance floor itself: its own wall is the front wall)
+	var door_w := 1.4 if FLOOR_UP > 0 else 0.0
+	if FLOOR_UP > 0:
+		_box(Vector3(x0, g0, z1 - 0.1), Vector3(dx - door_w / 2, g0 + STOREY, z1 + 0.1), wc)
+		_box(Vector3(dx + door_w / 2, g0, z1 - 0.1), Vector3(x1, g0 + STOREY, z1 + 0.1), wc)
+		_box(Vector3(dx - door_w / 2, g0 + 2.3, z1 - 0.1), Vector3(dx + door_w / 2, g0 + STOREY, z1 + 0.1), wc)
+		_box(Vector3(dx - door_w / 2, g0, z1 - 0.03), Vector3(dx - 0.05, g0 + 2.3, z1 + 0.03), C_GLASS)
+		_ground_solid.append(Rect2(x0, z1 - 0.1, dx - door_w / 2 - x0, 0.2))
+		_ground_solid.append(Rect2(dx + door_w / 2, z1 - 0.1, x1 - dx - door_w / 2, 0.2))
+		_box(Vector3(x0, g0 + STOREY, z1 - 0.1), Vector3(x1, -0.06, z1 + 0.1), wc)
+		_mid_solid.append(Rect2(x0, z1 - 0.1, CORE_W, 0.2))
+	for k in range(1, FLOOR_UP):    # the neighbours' front doors on the floors between
 		_box(Vector3(dx - 0.45, g0 + k * STOREY, z1 - 0.12), Vector3(dx + 0.45, g0 + k * STOREY + 2.05, z1 - 0.1), C_STEEL_DOOR)
 	# floors: a landing at each level, the half landings, and the flights
 	var fa := Rect2(x0, z1 - 3.8, 1.15, 2.5)            # flight A: up from the landing, away
@@ -1205,7 +1248,7 @@ func _height(p: Vector2, cur: float) -> float:
 		return best
 	if absf(p.x) < _hx and absf(p.y) < _hz and cur > -1.5:
 		return 0.0
-	return _g0
+	return _g0   # (0 for a garden flat: the street, the garden and the flat are one level)
 
 func _build_outside() -> void:
 	var size := Vector2(plan["size"][0], plan["size"][1])
@@ -1218,9 +1261,15 @@ func _build_outside() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = int(plan.get("seed", 1)) * 977
 	# the ground, the pavements and the street in front
-	_box(Vector3(-80, g0 - 0.3, -80), Vector3(80, g0, 80), Color(0.52, 0.50, 0.46))
-	var street_a := hz + 4.0
-	_box(Vector3(-80, g0, hz - 1.0), Vector3(80, g0 + 0.12, street_a), C_PAVE)
+	if FLOOR_UP > 0:
+		_box(Vector3(-80, g0 - 0.3, -80), Vector3(80, g0, 80), Color(0.52, 0.50, 0.46))
+	var garden := FLOOR_UP == 0
+	var street_a := hz + (GARDEN_D + 2.0 if garden else 4.0)
+	if garden:
+		# the ground sits a hair under the flat's floor, which is at street level here
+		_box(Vector3(-80, -0.4, -80), Vector3(80, -0.07, 80), Color(0.52, 0.50, 0.46))
+		_build_garden(hx, hz, street_a, rng)
+	_box(Vector3(-80, g0, street_a - 2.0 if garden else hz - 1.0), Vector3(80, g0 + 0.12 * int(not garden) - 0.06 * int(garden), street_a), C_PAVE)
 	_box(Vector3(-80, g0 - 0.05, street_a), Vector3(80, g0 + 0.02, street_a + 9.0), C_ROAD)
 	for k in range(-40, 40):
 		_box(Vector3(k * 2.0, g0 + 0.02, street_a + 4.45), Vector3(k * 2.0 + 1.0, g0 + 0.03, street_a + 4.55), Color(0.9, 0.9, 0.85))
@@ -1228,13 +1277,14 @@ func _build_outside() -> void:
 	# our own building: from the street up to under the flat, and two storeys over it
 	# its entrance floor is open, on columns (as most Givatayim blocks are); the two floors
 	# over it are other people's flats
-	_block(Vector3(-hx, g0 + STOREY, -hz), Vector3(hx, -0.06, hz), C_PLASTER[0], true)
-	_box(Vector3(-hx, g0 + STOREY - 0.35, -hz), Vector3(hx, g0 + STOREY, hz), C_PLASTER[0].darkened(0.1))
+	if FLOOR_UP > 0:
+		_block(Vector3(-hx, g0 + STOREY, -hz), Vector3(hx, -0.06, hz), C_PLASTER[0], true)
+		_box(Vector3(-hx, g0 + STOREY - 0.35, -hz), Vector3(hx, g0 + STOREY, hz), C_PLASTER[0].darkened(0.1))
 	var door_x := 0.0
 	for d in plan["doors"]:
 		if d["style"] == "front":
 			door_x = _w((float(d["a"]) + float(d["b"])) / 2.0, 0).x
-	for cxk in [-hx + 0.2, -hx / 3.0, hx / 3.0, hx - 0.2]:
+	for cxk in ([-hx + 0.2, -hx / 3.0, hx / 3.0, hx - 0.2] if FLOOR_UP > 0 else []):
 		if absf(cxk - door_x) < 1.2:
 			continue     # keep the way from the street to the lobby door clear
 		for czk in [-hz + 0.2, 0.0, hz - 0.2]:
@@ -1289,6 +1339,72 @@ func _build_outside() -> void:
 			car.rotation.y = PI / 2 if car.position.z < street_a + 4 else -PI / 2
 			world.add_child(car)
 		cx += rng.randf_range(5.0, 7.0)
+
+## A garden flat's garden: lawn from the terrace to a hedge and fence along the street,
+## a stone path from the gate, two trees, plants along the fence, a table with chairs and
+## a lounger. The fence and hedge are solid; the gate is a gap in them.
+var _garden := Rect2()
+var _gate := Vector2.ZERO
+
+func _build_garden(hx: float, hz: float, street_a: float, rng: RandomNumberGenerator) -> void:
+	var front := hz                       # the plan's front edge (the terrace's edge)
+	var back := street_a - 2.0            # the fence, by the pavement
+	_garden = Rect2(-hx, front - 3.0, 2 * hx, back - front + 3.0)
+	_box(Vector3(-hx, -0.07, front - 3.0), Vector3(hx, -0.02, back), Color(0.36, 0.55, 0.28))   # lawn
+	_gate = Vector2(rng.randf_range(-hx * 0.4, hx * 0.4), back)
+	# path stones from the gate to the terrace
+	var z := back - 0.5
+	while z > front:
+		_box(Vector3(_gate.x - 0.35, -0.03, z - 0.3), Vector3(_gate.x + 0.35, -0.0, z), Color(0.72, 0.70, 0.66))
+		z -= 0.55
+	# hedge + fence along the street (gap for the gate) and down both sides
+	var runs := [Rect2(-hx, back - 0.5, _gate.x - 0.6 + hx, 0.5), Rect2(_gate.x + 0.6, back - 0.5, hx - _gate.x - 0.6, 0.5),
+		Rect2(-hx - 0.5, front - 3.0, 0.5, back - front + 3.0), Rect2(hx, front - 3.0, 0.5, back - front + 3.0)]
+	for r: Rect2 in runs:
+		_box(Vector3(r.position.x, -0.02, r.position.y), Vector3(r.end.x, 1.1, r.end.y), Color(0.22, 0.42, 0.20))
+		_solid.append(r)
+	for gx in [_gate.x - 0.6, _gate.x + 0.6]:
+		_box(Vector3(gx - 0.08, 0.0, back - 0.4), Vector3(gx + 0.08, 1.3, back - 0.1), Color(0.3, 0.3, 0.32))
+	world.add_child(_commit("Garden"))
+	# two trees, plants along the hedge, garden table and chairs, a lounger
+	for k in 2:
+		var tr := model("tree-small", rng.randf_range(3.5, 4.5), "friend")
+		var tx := (-hx * 0.6) if k == 0 else (hx * 0.6)
+		tr.position = Vector3(tx, 0.0, back - 1.6)
+		world.add_child(tr)
+		_solid.append(Rect2(tx - 0.25, back - 1.85, 0.5, 0.5))
+	var x := -hx + 0.6
+	while x < hx - 0.6:
+		if absf(x - _gate.x) > 1.2:
+			var pl := _scene("pottedPlant")
+			if pl:
+				var n: Node3D = pl.instantiate()
+				n.scale = Vector3.ONE * 1.4
+				n.position = Vector3(x, 0.0, back - 0.8)
+				world.add_child(n)
+		x += rng.randf_range(1.2, 2.0)
+	var tz := front + 2.0
+	var tx2 := hx * 0.45 if _gate.x < 0 else -hx * 0.45
+	for spec in [["tableRound", Vector3(tx2, 0, tz), 0.0, Vector3(1.1, 0.74, 1.1)],
+			["chair", Vector3(tx2 - 0.8, 0, tz), PI / 2, Vector3(0.45, 0.92, 0.45)],
+			["chair", Vector3(tx2 + 0.8, 0, tz), -PI / 2, Vector3(0.45, 0.92, 0.45)],
+			["loungeChairRelax", Vector3(-tx2, 0, tz + 0.5), PI, Vector3(0.7, 0.85, 1.6)]]:
+		var ps := _scene(spec[0])
+		if ps == null:
+			continue
+		var n2: Node3D = ps.instantiate()
+		var bb := GameMode3D.aabb_of(n2)
+		var sz: Vector3 = spec[3]
+		n2.scale = Vector3(sz.x / bb.size.x, sz.y / bb.size.y, sz.z / bb.size.z)
+		var piv := Node3D.new()
+		piv.position = spec[1]
+		piv.rotation.y = spec[2]
+		n2.position = -Vector3(bb.get_center().x * n2.scale.x, bb.position.y * n2.scale.y, bb.get_center().z * n2.scale.z)
+		piv.add_child(n2)
+		world.add_child(piv)
+		if spec[0] != "chair":
+			var half := Vector2(sz.x, sz.z) / 2.0 if absf(sin(spec[2])) < 0.5 else Vector2(sz.z, sz.x) / 2.0
+			_solid.append(Rect2(Vector2(spec[1].x, spec[1].z) - half, half * 2.0))
 
 ## A block of flats as a box with rows of windows and balcony slabs on its faces. `own`
 ## leaves the window rows off the top of our building (the flat's own windows are real).
