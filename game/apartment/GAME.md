@@ -28,10 +28,13 @@ to the mirpeset, parents' room with its own shower room.
 - Walk at eye height: arrows / WASD, or drag (sideways turns, up walks on).
 - Shift (K) swaps to the dollhouse: the flat from above, ceilings off, room names.
 - Space starts the guided tour: it walks every room by itself. A tap or click stops it.
+- Decorate in the dollhouse: tap a piece of furniture to pick it up, drag it, "rotate"
+  (or space) turns it, arrows nudge it. It will not go into a wall, out of the flat or onto
+  another piece: let go there and it jumps back. Tap the floor to put it down.
 
 ## Later (said, not built)
 
-- Decorate a flat: move, add, remove furniture.
+- Decorate a flat: add and remove furniture, keep the result (moving is built).
 - A whole building: walk in from the stairwell (the plans for buildings exist in
   lab/apartments/building.py).
 - The view of the city from the windows.

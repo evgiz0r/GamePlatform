@@ -66,6 +66,9 @@ var plan: Dictionary = {}
 var _off := Vector2.ZERO          ## plan point + _off = world X/Z (centres the flat)
 var _batches := {}                ## Color -> [PackedVector3Array verts, PackedVector3Array normals]
 var _solid: Array[Rect2] = []     ## what the walker cannot pass, world X/Z
+var _org := Vector3.ZERO          ## _box subtracts this: builds an item round its own centre
+var _mat_cache := {}              ## Color -> StandardMaterial3D, shared by every mesh
+var items: Array = []             ## {node, rect (world X/Z), name, solid}: the furniture
 var _door_ends := {}              ## "o|line|pos" of every door opening's two ends
 var _ceiling: Node3D
 var _labels: Node3D
@@ -115,6 +118,7 @@ func start(config: Dictionary) -> void:
 	cam.near = 0.05
 	_build()
 	_build_ui()
+	_build_deco_ui()
 	var s: Array = plan["start"]
 	_pos = _w(s[0], s[1])
 	_yaw = 0.0
@@ -147,9 +151,10 @@ func _build() -> void:
 		_wall(wr)
 	for d in plan["doors"]:
 		_door(d)
-	for it in plan["items"]:
-		_item(it)
 	world.add_child(_commit("Flat"))
+	# every piece of furniture its own object, so it can be picked up and moved
+	for it in plan["items"]:
+		_make_item(it)
 	# ceilings, a mesh of their own so the dollhouse can hide them
 	for r in plan["rooms"]:
 		if r["kind"] == "mirpeset":
@@ -387,8 +392,6 @@ func _item(it: Dictionary) -> void:
 			part.call(0, L, 0, D * 0.3, 0.35, 0.7, C_WHITE)
 		_:
 			part.call(0, L, 0, D, 0.0, 0.8, C_WOOD_LT)
-	if name not in ["plant", "chair"]:
-		_solid.append(Rect2(a, b - a))
 
 ## Item-local (u along its back wall from its left end, v out from the wall) to world X/Z.
 func _local(a: Vector2, b: Vector2, face: String, u: float, v: float) -> Vector2:
@@ -405,6 +408,8 @@ func _local(a: Vector2, b: Vector2, face: String, u: float, v: float) -> Vector2
 ## ---- mesh batching ---------------------------------------------------------------
 
 func _box(lo: Vector3, hi: Vector3, c: Color) -> void:
+	lo -= _org
+	hi -= _org
 	if not _batches.has(c):
 		_batches[c] = [PackedVector3Array(), PackedVector3Array()]
 	var vs: PackedVector3Array = _batches[c][0]
@@ -429,13 +434,16 @@ func _commit(node_name: String) -> MeshInstance3D:
 		arr[Mesh.ARRAY_VERTEX] = _batches[c][0]
 		arr[Mesh.ARRAY_NORMAL] = _batches[c][1]
 		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
-		var m := StandardMaterial3D.new()
-		m.albedo_color = c
-		m.roughness = 0.85
-		if c.a < 1.0:
-			m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-			m.cull_mode = BaseMaterial3D.CULL_DISABLED
-			m.roughness = 0.1
+		var m: StandardMaterial3D = _mat_cache.get(c)
+		if m == null:
+			m = StandardMaterial3D.new()
+			m.albedo_color = c
+			m.roughness = 0.85
+			if c.a < 1.0:
+				m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+				m.cull_mode = BaseMaterial3D.CULL_DISABLED
+				m.roughness = 0.1
+			_mat_cache[c] = m
 		am.surface_set_material(am.get_surface_count() - 1, m)
 	_batches.clear()
 	var mi := MeshInstance3D.new()
@@ -467,28 +475,41 @@ func _build_ui() -> void:
 	add_child(help)
 
 func _input(e: InputEvent) -> void:
-	if Flow.pointer_over_hud():
+	if Flow.pointer_over_hud() or not _loaded:
 		return
-	if e is InputEventScreenTouch or e is InputEventMouseButton:
-		var down: bool = e.pressed
-		if e is InputEventMouseButton and e.button_index != MOUSE_BUTTON_LEFT:
+	# a phone sends both touch and emulated mouse events: take the mouse ones only
+	if e is InputEventScreenTouch or e is InputEventScreenDrag:
+		return
+	if e is InputEventMouseButton:
+		if e.button_index != MOUSE_BUTTON_LEFT or _over_own_ui(e.position):
 			return
-		if down:
+		if e.pressed:
+			_tour.clear()
+			if _deco_press(e.position):
+				return
 			_drag_from = e.position
 			_drag_now = e.position
 			_drag_yaw = _yaw
-			_tour.clear()
 		else:
 			_drag_from = Vector2.INF
-	elif (e is InputEventScreenDrag or e is InputEventMouseMotion) and _drag_from.is_finite():
-		_drag_now = e.position
+			_deco_release()
+	elif e is InputEventMouseMotion:
+		if not _hold.is_empty():
+			_deco_drag(e.position)
+		elif _drag_from.is_finite():
+			_drag_now = e.position
 
 func _process(delta: float) -> void:
 	if not _loaded:
 		return
 	if PInput.just_pressed("action_b"):
 		_doll = not _doll
+		_select(-1)
 		Probe.event("view_" + ("doll" if _doll else "walk"))
+	_deco_hint.visible = _doll and _sel < 0
+	if _deco_keys():
+		_view()
+		return
 	if PInput.just_pressed("action_a") and _tour.is_empty():
 		_start_tour()
 	var d := PInput.dir()
@@ -516,7 +537,7 @@ func _process(delta: float) -> void:
 func _move(step: Vector2) -> void:
 	_pos += step
 	for _i in 3:
-		for r in _solid:
+		for r: Rect2 in _blocks():
 			if not r.grow(R).has_point(_pos):
 				continue
 			var c := Vector2(clampf(_pos.x, r.position.x, r.end.x), clampf(_pos.y, r.position.y, r.end.y))
@@ -547,8 +568,9 @@ func _view() -> void:
 	_figure.position = Vector3(_pos.x, 0.85, _pos.y)
 	if _doll:
 		var size := Vector2(plan["size"][0], plan["size"][1])
-		var dist := maxf(size.x, size.y) * 1.15
-		look_from(Vector3(_pos.x * 0.3, dist, _pos.y * 0.3 + dist * 0.55), Vector3(_pos.x * 0.3, 0, _pos.y * 0.3))
+		# close and steep, so a piece is big enough to put a finger on
+		var dist := maxf(size.x, size.y) * 0.95
+		look_from(Vector3(_pos.x * 0.3, dist, _pos.y * 0.3 + dist * 0.38), Vector3(_pos.x * 0.3, 0, _pos.y * 0.3))
 	else:
 		var eye := Vector3(_pos.x, EYE, _pos.y)
 		var dirv := Vector3(-sin(_yaw) * cos(_pitch), sin(_pitch), -cos(_yaw) * cos(_pitch))
@@ -615,7 +637,7 @@ func _make_grid() -> void:
 	for x in _grid.region.size.x:
 		for y in _grid.region.size.y:
 			var c := _grid.offset + Vector2(x, y) * CELL
-			for r in _solid:
+			for r: Rect2 in _blocks():
 				if r.grow(R + 0.02).has_point(c):
 					_grid.set_point_solid(Vector2i(x, y))
 					break
@@ -685,3 +707,207 @@ func film_mode(on: bool) -> void:
 
 func film_done() -> bool:
 	return _filming and _tour.is_empty()
+
+## ---- decorating ------------------------------------------------------------------
+##
+## In the dollhouse every piece of furniture can be moved: tap it (it lights up), drag it
+## by the same amount your finger moves (never snapped to the finger), rotate it with the
+## "rotate" button or space. The arrow keys nudge it 10 cm a press. A piece cannot end up
+## in a wall, out of the flat or on another piece: let go there and it goes back. Tap the
+## floor to put it down. In the walking view nothing is picked up.
+
+const SNAP := 0.05
+const LOW := ["chair", "plant"]   ## things the walker brushes past and pieces may overlap
+
+var _sel := -1                    ## index into items, -1 when nothing is picked up
+var _sel_mark: MeshInstance3D     ## the glow under the picked-up piece
+var _hold := {}                   ## the drag of a piece: ground and centre where it began
+var _rotate_btn: Button
+var _deco_hint: Label
+
+func _make_item(it: Dictionary) -> void:
+	var rc: Array = it["rect"]
+	var a := _w(rc[0], rc[1])
+	var b := _w(rc[2], rc[3])
+	var c := (a + b) / 2.0
+	_org = Vector3(c.x, 0, c.y)
+	_item(it)
+	var node := _commit(it["name"])
+	node.position = _org
+	_org = Vector3.ZERO
+	world.add_child(node)
+	items.append({"node": node, "rect": Rect2(a, b - a), "name": it["name"],
+		"solid": it["name"] not in LOW, "room": it["room"]})
+
+## Walls, windows and rails, then the furniture that is in the way.
+func _blocks() -> Array:
+	var out: Array = _solid.duplicate()
+	for i in items.size():
+		if items[i]["solid"]:
+			out.append(items[i]["rect"])
+	return out
+
+func _item_at(p: Vector2) -> int:
+	# the smallest piece under the point (a chair over a rug, a lamp on a table)
+	var best := -1
+	var area := INF
+	for i in items.size():
+		var r: Rect2 = items[i]["rect"]
+		if r.grow(0.05).has_point(p) and r.get_area() < area:
+			best = i
+			area = r.get_area()
+	return best
+
+## Where a piece may stand: inside the flat, clear of the walls, not on another piece
+## (low things like chairs may tuck under a table).
+func _fits(i: int, r: Rect2) -> bool:
+	var inner := r.grow(-0.02)
+	for p in [inner.position, inner.end, Vector2(inner.position.x, inner.end.y),
+			Vector2(inner.end.x, inner.position.y), inner.get_center()]:
+		if _room_at(p).is_empty():
+			return false
+	for w in _solid:
+		if w.intersects(inner):
+			return false
+	if items[i]["solid"]:
+		for j in items.size():
+			if j != i and items[j]["solid"] and items[j]["rect"].intersects(inner):
+				return false
+	return true
+
+func _select(i: int) -> void:
+	_sel = i
+	_hold = {}
+	if _sel_mark == null:
+		_sel_mark = MeshInstance3D.new()
+		_sel_mark.mesh = BoxMesh.new()
+		world.add_child(_sel_mark)
+	_sel_mark.visible = i >= 0
+	_rotate_btn.visible = i >= 0
+	if i >= 0:
+		Probe.event("pick_" + str(items[i]["name"]))
+	_mark()
+
+## The glow under the picked-up piece: the accent colour where it fits, the hazard
+## colour where it would not.
+func _mark() -> void:
+	if _sel < 0:
+		return
+	var r: Rect2 = items[_sel]["rect"]
+	var ok := _fits(_sel, r)
+	_sel_mark.position = Vector3(r.get_center().x, 0.02, r.get_center().y)
+	(_sel_mark.mesh as BoxMesh).size = Vector3(r.size.x + 0.12, 0.03, r.size.y + 0.12)
+	_sel_mark.material_override = mat("accent" if ok else "hazard", 0.9)
+
+func _place(i: int, center: Vector2, rot: float) -> void:
+	var it: Dictionary = items[i]
+	var node: Node3D = it["node"]
+	var r: Rect2 = it["rect"]
+	var size := r.size
+	var turns := int(round((rot - node.rotation.y) / (PI / 2))) % 2
+	if turns != 0:
+		size = Vector2(size.y, size.x)
+	node.rotation.y = rot
+	node.position = Vector3(center.x, 0, center.y)
+	it["rect"] = Rect2(center - size / 2.0, size)
+	_grid = null   # the tour's map of where it can walk is stale now
+	_mark()
+
+## Try a move; keep it only if the piece fits there. Returns whether it moved.
+func _try(i: int, center: Vector2, rot: float) -> bool:
+	var node: Node3D = items[i]["node"]
+	var old_c := Vector2(node.position.x, node.position.z)
+	var old_r := node.rotation.y
+	_place(i, center, rot)
+	if _fits(i, items[i]["rect"]):
+		return true
+	_place(i, old_c, old_r)
+	return false
+
+func _rotate_sel() -> void:
+	if _sel < 0:
+		return
+	var node: Node3D = items[_sel]["node"]
+	var c := Vector2(node.position.x, node.position.z)
+	if not _try(_sel, c, wrapf(node.rotation.y + PI / 2, -PI, PI)):
+		Probe.event("rotate_blocked")
+	else:
+		Probe.event("rotate")
+
+func _snap2(v: Vector2) -> Vector2:
+	return (v / SNAP).round() * SNAP
+
+## A tap in the dollhouse: on a piece picks it up (and starts dragging it), on the floor
+## puts it down. Returns true when the tap was the decorator's.
+func _deco_press(screen: Vector2) -> bool:
+	if not _doll:
+		return false
+	var g := ground_point(screen)
+	if not g.is_finite():
+		return false
+	var p := Vector2(g.x, g.z)
+	var i := _item_at(p)
+	if i < 0:
+		if _sel >= 0:
+			_select(-1)
+			return true
+		return false
+	if i != _sel:
+		_select(i)
+	var node: Node3D = items[i]["node"]
+	_hold = {"from": p, "center": Vector2(node.position.x, node.position.z), "rot": node.rotation.y}
+	return true
+
+func _deco_drag(screen: Vector2) -> void:
+	var g := ground_point(screen)
+	if not g.is_finite() or _hold.is_empty():
+		return
+	var c: Vector2 = _hold["center"] + (Vector2(g.x, g.z) - _hold["from"])
+	_place(_sel, _snap2(c), items[_sel]["node"].rotation.y)
+
+func _deco_release() -> void:
+	if _hold.is_empty() or _sel < 0:
+		return
+	if not _fits(_sel, items[_sel]["rect"]):
+		_place(_sel, _hold["center"], _hold["rot"])   # back where it was
+		Probe.event("move_blocked")
+	else:
+		Probe.event("move")
+	_hold = {}
+
+## Keys while a piece is picked up: arrows nudge it, space turns it, shift puts it down.
+func _deco_keys() -> bool:
+	if _sel < 0 or not _doll:
+		return false
+	var node: Node3D = items[_sel]["node"]
+	var c := Vector2(node.position.x, node.position.z)
+	for k in [["move_left", Vector2(-0.1, 0)], ["move_right", Vector2(0.1, 0)],
+			["move_up", Vector2(0, -0.1)], ["move_down", Vector2(0, 0.1)]]:
+		if PInput.just_pressed(k[0]):
+			_try(_sel, c + k[1], node.rotation.y)
+	if PInput.just_pressed("action_a"):
+		_rotate_sel()
+	return true
+
+func _build_deco_ui() -> void:
+	_rotate_btn = Button.new()
+	_rotate_btn.text = "rotate"
+	_rotate_btn.position = Vector2(560, 300)
+	_rotate_btn.size = Vector2(68, 30)
+	_rotate_btn.visible = false
+	_rotate_btn.pressed.connect(_rotate_sel)
+	add_child(_rotate_btn)
+	_deco_hint = Label.new()
+	_deco_hint.text = "tap a piece of furniture to move it"
+	_deco_hint.position = Vector2(0, 26)
+	_deco_hint.size = Vector2(640, 16)
+	_deco_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_deco_hint.add_theme_font_size_override("font_size", 10)
+	_deco_hint.add_theme_color_override("font_color", Color(1, 1, 1, 0.9))
+	_deco_hint.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+	_deco_hint.add_theme_constant_override("outline_size", 3)
+	_deco_hint.visible = false
+	add_child(_deco_hint)
+
+func _over_own_ui(screen: Vector2) -> bool:
+	return _rotate_btn != null and _rotate_btn.visible and Rect2(_rotate_btn.position, _rotate_btn.size).grow(4).has_point(screen)
