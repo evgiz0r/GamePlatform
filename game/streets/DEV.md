@@ -5595,6 +5595,14 @@ within 1.2 m behind it. Both have posts.
 - **Trolleys** (25 Nov, furniture.gd street_extras, `_trolley_kit`): by each OSM supermarket, a
   row of 3-6 nested along the front at the first clear spot out of the building toward its
   street, and one in three a stray 8-24 m down the pavement. Tel Aviv ~570, Givatayim ~100.
+- **Birds stuck in mid-air** (26 Nov, the user): the roof rows took a building and its height
+  from the town's lists (`_blds`, `_bld_top`), which hold buildings never drawn and know
+  nothing of the 0.7 m parapet -- rows sat over nothing, or under the parapet's top. Now only
+  a flat roof `_build_buildings` actually drew, at the height it drew its parapet's top
+  (`_roof_y`, NAN for the rest). "Too many pigeons": MAX_FLOCKS 6 -> 4, flocks 4-9 (was
+  5-12), rows on wires and roofs 2-6 (were 3-9 / 3-8). The check that should have caught it:
+  small_life's "off the roof" only asked whether the bird stood inside the outline, never
+  whether a roof was drawn there at that height.
 - **Open**: birds never perch on lamp tops; a flock
   spooked by traffic on the road only when it is your car; the crows look like grey pigeons
   scaled up (no separate black head and wings in the paint); gas cages only on streets

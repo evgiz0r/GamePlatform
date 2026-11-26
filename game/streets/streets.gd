@@ -1017,6 +1017,7 @@ var _seg_hash := {}                  ## Vector2i cell -> Array of road * 4096 + 
 var _blds: Array = []                ## PackedVector2Array outlines, counter-clockwise
 var _bld_box: Array = []             ## Rect2 per building
 var _bld_solid := PackedByteArray()  ## 0 for a building raised on stilts you can drive under
+var _roof_y := PackedFloat32Array()  ## a drawn flat roof's edge height (its parapet's top), NAN for the rest and the not yet drawn (birds.gd)
 var _bld_kind := PackedByteArray()   ## 1 a block on columns, 2 a house with a pitched roof, 3 balconies
 var _bld_top := PackedFloat32Array() ## its walls' height (m), for a view from above kept over the roofs
 var _bld_hash := {}
@@ -3312,6 +3313,8 @@ func _build_setup(t0: int) -> void:
 	_build_asph_hash()
 	_bld_kind.resize((_city_data["buildings"] as Array).size())
 	_bld_kind.fill(0)
+	_roof_y.resize(_bld_kind.size())
+	_roof_y.fill(NAN)
 	for ni in _city_data.get("crossings", []):
 		_crossing_nodes.append(int(ni))
 		_crossing_set[int(ni)] = true
@@ -6764,6 +6767,8 @@ func _build_buildings() -> void:
 			"sgn": sgn, "gabled": gabled, "pilotis": pilotis, "lip": lip}
 		bd["_look"] = look
 		_bld_kind[bi] = 1 if pilotis else (2 if gabled else 0)
+		if not gabled and raised == 0.0 and bi < _roof_y.size():
+			_roof_y[bi] = h + lip   # (a flat roof as drawn: its parapet's top, where birds sit)
 		if raised == 0.0 and _ao != null:
 			if pilotis:   # the parking under it (round the lobby, 2.2 m in) in the shade, and a little out past its edge
 				var tao := Time.get_ticks_usec()

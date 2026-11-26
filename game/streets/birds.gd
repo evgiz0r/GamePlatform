@@ -12,7 +12,7 @@ extends RefCounted
 ## transform. Nothing here is solid: the car and people go through where a bird was, and it
 ## is up and away by then.
 const MAX_BIRDS := 72
-const MAX_FLOCKS := 6
+const MAX_FLOCKS := 4
 const FLEE_FOOT := 4.5
 const FLEE_CAR := 14.0
 const SEEN := 70.0                  ## drawn to (a pigeon is a speck past that)
@@ -249,7 +249,7 @@ func _land_wire(me: Vector2) -> bool:
 		var mid := Vector2(a.x + e.x, a.z + e.z) * 0.5
 		if mid.distance_to(me) < 20.0 or not g._spawn_ok(mid):
 			continue
-		var n := mini(rng.randi_range(3, 9), _free_ix.size())
+		var n := mini(rng.randi_range(2, 6), _free_ix.size())
 		var gap := rng.randf_range(0.22, 0.4) / L
 		var t := rng.randf_range(0.15, 0.85 - gap * n)
 		var across := Vector2(e.z - a.z, -(e.x - a.x)).normalized()
@@ -287,16 +287,16 @@ func _land_roof(me: Vector2) -> bool:
 			continue
 		var bi: int = cand[rng.randi() % cand.size()]
 		# (the game's own lists, not the city file's: some towns drop that once built)
-		if bi >= g._blds.size() or bi >= g._bld_top.size() or (bi < g._bld_kind.size() and g._bld_kind[bi] == 2):
+		# (only a flat roof that was drawn, at the height it was drawn: its parapet's top -- from
+		# the town's lists alone, birds sat in rows in mid-air over buildings never drawn and
+		# inside parapets, the user's "birds are stuck midair", 26 Nov)
+		if bi >= g._blds.size() or bi >= g._bld_top.size() or bi >= g._roof_y.size() or is_nan(g._roof_y[bi]):
 			continue
 		var top: float = g._bld_top[bi]
 		if top < 5.0 or top > 25.0:
 			continue
 		var ring: PackedVector2Array = g._blds[bi]
-		var g_sum := 0.0
-		for q: Vector2 in ring:
-			g_sum += float(g._h(q))
-		var y := g_sum / ring.size() + top
+		var y: float = g._roof_y[bi]
 		# the edge that looks onto a street: its middle nearest a road's asphalt, 4 m long or more
 		var best := -1
 		var best_d := 14.0
@@ -319,7 +319,7 @@ func _land_roof(me: Vector2) -> bool:
 		var d := (e - a).normalized()
 		var inward := Vector2(-d.y, d.x)   # (the ring runs counter-clockwise: the inside on its left)
 		var L := a.distance_to(e)
-		var n := mini(rng.randi_range(3, 8), _free_ix.size())
+		var n := mini(rng.randi_range(2, 6), _free_ix.size())
 		var gap := rng.randf_range(0.25, 0.45)
 		var s0 := rng.randf_range(0.5, maxf(L - gap * n - 0.5, 0.6))
 		var face := atan2(-inward.x, -inward.y)
@@ -386,7 +386,7 @@ func _land(me: Vector2) -> void:
 		if not g._off_road(c, 0.4) or g._push_out(c, 0.6, false, false) != Vector2.ZERO or not g._spawn_ok(c):
 			continue
 		var crow := rng.randf() < 0.25
-		var n := rng.randi_range(1, 3) if crow else rng.randi_range(5, 12)
+		var n := rng.randi_range(1, 3) if crow else rng.randi_range(4, 9)
 		var birds: Array = []
 		for k in range(n):
 			if _free_ix.is_empty():
