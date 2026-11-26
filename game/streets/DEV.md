@@ -2878,6 +2878,37 @@ it is dropped.
   towns the same. Driven both ways and on the slip road: 0 hits, 0 frames in the air;
   `street_holes` the same 6 points as before (that ramp's, 0.7-0.9 m) and 6 wall points;
   its 8 highest footbridges walked, 96-100%.
+- **Where decks meet the ground and each other** (26 Nov 2026, from a report in Bedford: "a lot
+  of bridges have weird artifacts along connections, and sometimes a hole in the ground where
+  roads don't connect"). `tests/deck_joins.gd` (with `DECKS_RECORD=1`, which makes `build()`
+  keep what it drew standing up in `drawn`) checks the families: anything drawn standing on
+  another road's lanes at its level, short wall runs standing alone, drivable deck ends in the
+  air, and two decks meeting at a bend. What it found and what changed:
+  - **Guardrails across slip roads' mouths.** A bank's guardrail opened only where the bank
+    gave way to a wall, never where another deck's road comes in, in a junction's corner or
+    over a street -- where its collision had always opened. So it was drawn across the lane and
+    not solid: cars drove through it and the chase camera ended up behind the rail (the
+    report's picture). Drawn now with the wall's gaps (`gap_rail`); its collision also opens
+    over a street at ground level. Bedford: 596 pieces on another road's lanes -> 4; Givatayim
+    0, Ashdod 2, Tel Aviv 3, the test town 0.
+  - **The abutment's top as a stone strip across the lanes.** The end wall under where a
+    bridge leaves an embankment had its top level with the joint, and on a ramp falling 11%
+    away from it stood 7 cm out of the road. Its top is now under the lowest asphalt over it,
+    and it is left out where the deck is under 1 m off the ground (nothing to hold up).
+  - **A wall beside the other carriageway.** An embankment's wall height came from the drop to
+    the ground; between a divided road's two ramps the other side is a deck at nearly the same
+    height. The drop is now to the highest of the ground and any other deck beside it
+    (`beside()`), drawn and solid alike.
+  - **Bends between two decks** (an embankment into its bridge at an angle): each ribbon ends
+    square across its own way, leaving the outside of the bend open to the ground below.
+    Filled with a disc at the joint whose rim follows whichever deck is nearer
+    (`_joint_disc`). Bedford 31 such joints, Tel Aviv 46.
+  - **Ends in the air**: none real. What the check lists are roads cut off at the map's edge
+    (the MacKay Bridge) and Tel Aviv's tunnels and cuttings whose OSM ways stop underground.
+  - **Still open**: short wall stubs where an embankment's wall hands over to its grass bank
+    (98 runs under 4 m in Bedford, by design: the wall reaches into each change, but a 2 m
+    stub beside a carriageway reads as junk); a thin concrete line across the road where a
+    bridge's slab end meets the ground road at the Highway 102 bridge by Meadowview.
 - **Still to do**: grass slopes for cuttings too (they are walled); a
   long-span bridge's height over water (the MacKay's deck is only as high as its ends);
   pavements at street level beside a cutting (the underpass has none); people on a bridge's
