@@ -615,12 +615,39 @@ func _start_tour() -> void:
 	for r in rooms:
 		stops.append(_w(r["label"][0], r["label"][1]))
 	stops.append(here)
-	for stop in stops:
-		var leg := _path(from, stop)
+	for k in stops.size():
+		var leg := _path(from, stops[k])
 		_tour.append_array(leg)
 		if not leg.is_empty():
 			from = leg[-1]
+		if k < stops.size() - 1:
+			_tour.append({"look": true})   # stand in the middle of the room and look round
 	Probe.event("tour")
+
+## The way out of a point with the most room in front of it (to look at a room from).
+func _open_dir(p: Vector2) -> float:
+	var best := 0.0
+	var by := _yaw
+	for k in 24:
+		var y := k * TAU / 24
+		var d := Vector2(-sin(y), -cos(y))
+		var free := 0.0
+		while free < 8.0:
+			var hit := false
+			for r: Rect2 in _solid:
+				if r.has_point(p + d * free):
+					hit = true
+					break
+			if hit:
+				break
+			free += 0.15
+		if free > best:
+			best = free
+			by = y
+	return by
+
+var _look: Array = []   ## yaw marks left in a look round a room
+var _look_hold := 0.0
 
 const CELL := 0.2
 var _grid: AStarGrid2D
@@ -668,6 +695,29 @@ func _path(a: Vector2, b: Vector2) -> Array:
 
 ## Steer at the next waypoint: (forward, turn). Turns on the spot when facing away.
 func _tour_step(delta: float) -> Vector2:
+	if _tour[0] is Dictionary:
+		# looking round: turn to the most open view, then slowly left, right, and back
+		if _look.is_empty() and _look_hold <= 0.0:
+			var c := _open_dir(_pos)
+			_look = [c, c + 1.3, c - 1.3, c]
+			_look_hold = 0.01
+		if _look.is_empty():
+			_tour.pop_front()
+			_look_hold = 0.0
+			return Vector2.ZERO
+		var diff_l := wrapf(float(_look[0]) - _yaw, -PI, PI)
+		if absf(diff_l) < 0.03:
+			_look_hold += delta
+			if _look_hold > 0.6:
+				_look.pop_front()
+				_look_hold = 0.01
+			return Vector2.ZERO
+		return Vector2(0.0, clampf(diff_l * 1.5, -0.45, 0.45))
+	# walking: aim at a point a little further down the path, so the view leads into the
+	# next room instead of staring at the wall beside the corner
+	if _tour.size() > 2 and _tour[1] is Vector2 and _tour[2] is Vector2 \
+			and (_tour[0] as Vector2).distance_to(_pos) < 0.6:
+		_tour.pop_front()
 	var tgt: Vector2 = _tour[0]
 	var to := tgt - _pos
 	# a point it cannot reach (furniture in the way, or the point inside it): give up on
@@ -684,8 +734,8 @@ func _tour_step(delta: float) -> Vector2:
 		return Vector2.ZERO
 	var want := atan2(-to.x, -to.y)
 	var diff := wrapf(want - _yaw, -PI, PI)
-	var turn := clampf(diff * 2.0, -1.0, 1.0)
-	var fwd := clampf(1.0 - absf(diff) * 1.2, 0.0, 1.0)
+	var turn := clampf(diff * 1.6, -0.8, 0.8)
+	var fwd := clampf(1.0 - absf(diff) * 1.2, 0.0, 0.85)
 	return Vector2(fwd, turn)
 
 ## ---- filming (tools/record_video.sh) -----------------------------------------------
