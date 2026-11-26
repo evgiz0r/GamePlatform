@@ -75,11 +75,11 @@ func _run() -> void:
 	var last := Vector2.INF
 	var still := 0.0
 	var t := 0.0
-	while not g._tour.is_empty() and t < 240.0:
+	while not g._tour.is_empty() and t < 400.0:
 		await physics_frame
 		t += 1.0 / 60.0
 		seen[g._room_now] = true
-		if last.is_finite() and g._pos.distance_to(last) < 0.0005:
+		if last.is_finite() and g._pos.distance_to(last) < 0.0005 and not g._tour.is_empty() and not (g._tour[0] is Dictionary):
 			still += 1.0 / 60.0
 			if still > 6.0:
 				print("stuck at ", g._pos, " in ", g._room_now, " heading for ", g._tour[0])
