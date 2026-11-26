@@ -4,7 +4,7 @@
 // Incrementing CACHE_VERSION will kick off the install event and force
 // previously cached resources to be updated from the network.
 /** @type {string} */
-const CACHE_VERSION = '1795724979|3923576';
+const CACHE_VERSION = '1795730165|4709442';
 /** @type {string} */
 const CACHE_PREFIX = 'GamePlatform-sw-cache-';
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
@@ -17,7 +17,7 @@ const ENSURE_CROSSORIGIN_ISOLATION_HEADERS = true;
 const CACHED_FILES = ["index.html","index.js","index.offline.html","index.icon.png","index.apple-touch-icon.png","index.audio.worklet.js","index.audio.position.worklet.js"];
 // Files that we might not want the user to preload, and will only be cached on first load.
 /** @type {string[]} */
-const CACHEABLE_FILES = ["index.wasm","index.pck","index.art.f6e9adab12ec.pck","index.data_annecy.0c7f6c7b8454.pck","index.data_ashdod.4119206654df.pck","index.data_bedford.9945a55ecd40.pck","index.data_delft.096aa57972be.pck","index.data_dimyon.17f6f534e837.pck","index.data_givatayim.ecf618adf328.pck","index.data_leiden.8d7a894350cc.pck","index.data_monaco.658b880ba4f1.pck","index.data_tel_aviv.c6b29a60153f.pck","index.data_trick_road.5c9ecd5173be.pck","index.sound.ff6f6a63df21.pck"];
+const CACHEABLE_FILES = ["index.wasm","index.pck","index.art.cfe2ffb3f97d.pck","index.data_annecy.0c7f6c7b8454.pck","index.data_ashdod.4119206654df.pck","index.data_bedford.9945a55ecd40.pck","index.data_delft.096aa57972be.pck","index.data_dimyon.17f6f534e837.pck","index.data_givatayim.ecf618adf328.pck","index.data_leiden.8d7a894350cc.pck","index.data_monaco.658b880ba4f1.pck","index.data_tel_aviv.c6b29a60153f.pck","index.data_trick_road.5c9ecd5173be.pck","index.sound.ff6f6a63df21.pck"];
 const FULL_CACHE = CACHED_FILES.concat(CACHEABLE_FILES);
 
 // PATCHED by tools/publish_web.sh -- fetch straight from the origin, under a URL stamped
