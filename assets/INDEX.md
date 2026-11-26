@@ -196,6 +196,16 @@ aircraft; Kenney has no 3D airplane.
 
 `toy-car/`: `item-banana`
 
+`furniture/` (Kenney Furniture Kit; about half real size, they face +Z, no shared texture):
+`bedDouble` `bedSingle` `cabinetBed` `cabinetBedDrawer` `loungeSofa` `loungeSofaCorner`
+`loungeChair` `loungeChairRelax` `tableCoffee` `table` `tableRound` `chair` `chairDesk` `desk`
+`computerScreen` `cabinetTelevision` `televisionModern` `bookcaseOpen` `bookcaseClosedDoors`
+`bookcaseClosedWide` `sideTable` `sideTableDrawers` `kitchenCabinet` `kitchenCabinetDrawer`
+`kitchenCabinetUpper` `kitchenSink` `kitchenStove` `kitchenFridgeLarge` `kitchenCoffeeMachine`
+`kitchenMicrowave` `bathtub` `shower` `showerRound` `toilet` `bathroomSink` `bathroomMirror`
+`washer` `pottedPlant` `plantSmall1` `rugRectangle` `lampRoundFloor` `lampRoundTable`
+`lampSquareCeiling`
+
 `city-commercial/`: `building-a` … `building-h` (shops, 2-4 storeys) `building-skyscraper-a`
 `building-skyscraper-b` `building-skyscraper-c` — street-facing facades, good for a side-on street
 

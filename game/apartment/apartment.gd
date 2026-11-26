@@ -957,13 +957,128 @@ func _make_item(it: Dictionary) -> void:
 	var b := _w(rc[2], rc[3])
 	var c := (a + b) / 2.0
 	_org = Vector3(c.x, 0, c.y)
-	_item(it)
-	var node := _commit(it["name"])
+	var node: Node3D
+	if USE_MODELS and _furnish_model(it, a, b, c):
+		node = _model_root
+		_model_root = null
+	else:
+		_item(it)
+		node = _commit(it["name"])
 	node.position = _org
 	_org = Vector3.ZERO
 	world.add_child(node)
 	items.append({"node": node, "rect": Rect2(a, b - a), "name": it["name"],
 		"solid": it["name"] not in LOW, "room": it["room"], "face": it["face"], "home": c})
+
+## ---- real furniture (Kenney's Furniture Kit, CC0, assets/models/furniture) ----------
+##
+## Each plan item is one or more models fitted into its rect: stretched to the rect along
+## the wall (u) and out of it (v), to a real height, and turned so the model's +Z (the side
+## Kenney's pieces face) looks out of the wall. Long runs (a wardrobe, the kitchen) are a
+## row of units. A missing model falls back to the boxes in _item().
+
+const USE_MODELS := true
+const FURN_DIR := "res://assets/models/furniture/"
+## item -> [[model, u0, u1 (fractions of L, or a unit width in m when "tile"), v0, v1
+##   (fractions of D), y0, height], ...]
+const FURN := {
+	"bed_double": [["bedDouble", 0, 1, 0, 1, 0.0, 0.55]],
+	"bed_single": [["bedSingle", 0, 1, 0, 1, 0.0, 0.55]],
+	"nightstand": [["cabinetBedDrawer", 0, 1, 0, 1, 0.0, 0.5]],
+	"sofa": [["loungeSofa", 0, 1, 0, 1, 0.0, 0.85]],
+	"sofa_bed": [["loungeSofa", 0, 1, 0, 1, 0.0, 0.85]],
+	"wardrobe": [["tile:bookcaseClosedDoors:0.6", 0, 1, 0, 1, 0.0, 2.2]],
+	"shelves": [["bookcaseOpen", 0, 1, 0, 1, 0.0, 1.8]],
+	"shoe_cabinet": [["bookcaseClosedWide", 0, 1, 0, 1, 0.0, 1.0]],
+	"desk": [["desk", 0, 1, 0, 1, 0.0, 0.76], ["computerScreen", 0.3, 0.7, 0.05, 0.3, 0.76, 0.45]],
+	"fridge": [["kitchenFridgeLarge", 0, 1, 0, 1, 0.0, 1.85]],
+	"dining_table": [["table", 0, 1, 0, 1, 0.0, 0.76]],
+	"chair": [["chair", 0, 1, 0, 1, 0.0, 0.92]],
+	"coffee_table": [["tableCoffee", 0, 1, 0, 1, 0.0, 0.42]],
+	"tv_unit": [["cabinetTelevision", 0, 1, 0, 1, 0.0, 0.5], ["televisionModern", 0.1, 0.9, 0.1, 0.6, 0.5, 0.7]],
+	"bathtub": [["bathtub", 0, 1, 0, 1, 0.0, 0.58]],
+	"shower": [["shower", 0, 1, 0, 1, 0.0, 2.05]],
+	"toilet": [["toilet", 0, 1, 0, 1, 0.0, 0.8]],
+	"sink": [["bathroomSink", 0, 1, 0, 1, 0.0, 0.9], ["bathroomMirror", 0.15, 0.85, 0, 0.25, 1.15, 0.7]],
+	"sink_small": [["bathroomSink", 0, 1, 0, 1, 0.0, 0.85]],
+	"washer": [["washer", 0, 1, 0, 1, 0.0, 0.85]],
+	"plant": [["pottedPlant", 0, 1, 0, 1, 0.0, 1.0]],
+	"table_round": [["tableRound", 0, 1, 0, 1, 0.0, 0.74]],
+	"lounger": [["loungeChairRelax", 0, 1, 0, 1, 0.0, 0.85]],
+	"counter": [["kitchen", 0, 1, 0, 1, 0.0, 0.9]],
+}
+var _scenes := {}
+var _boxes_of := {}           ## model -> its AABB at scale 1
+var _model_root: Node3D
+
+func _scene(n: String) -> PackedScene:
+	if not _scenes.has(n):
+		var path := FURN_DIR + n + ".glb"
+		_scenes[n] = load(path) if ResourceLoader.exists(path) else null
+	return _scenes[n]
+
+func _furnish_model(it: Dictionary, a: Vector2, b: Vector2, c: Vector2) -> bool:
+	var parts: Array = FURN.get(it["name"], [])
+	if parts.is_empty():
+		return false
+	var face: String = it["face"]
+	var L := (b.x - a.x) if face in ["S", "N"] else (b.y - a.y)
+	var D := (b.y - a.y) if face in ["S", "N"] else (b.x - a.x)
+	var f: Vector2 = {"S": Vector2(0, 1), "N": Vector2(0, -1), "E": Vector2(1, 0), "W": Vector2(-1, 0)}[face]
+	var rot := atan2(f.x, f.y)
+	_model_root = Node3D.new()
+	_model_root.name = it["name"]
+	var put := func(model: String, u0: float, u1: float, v0: float, v1: float, y0: float, h: float) -> bool:
+		var ps := _scene(model)
+		if ps == null:
+			return false
+		var inst: Node3D = ps.instantiate()
+		if not _boxes_of.has(model):
+			_boxes_of[model] = GameMode3D.aabb_of(inst)
+		var bb: AABB = _boxes_of[model]
+		var sc := Vector3((u1 - u0) / maxf(bb.size.x, 0.01), h / maxf(bb.size.y, 0.01), (v1 - v0) / maxf(bb.size.z, 0.01))
+		var pivot := Node3D.new()
+		var mid := _local(a, b, face, (u0 + u1) / 2.0, (v0 + v1) / 2.0) - c
+		pivot.position = Vector3(mid.x, y0, mid.y)
+		pivot.rotation.y = rot
+		inst.scale = sc
+		inst.position = -Vector3(bb.get_center().x * sc.x, bb.position.y * sc.y, bb.get_center().z * sc.z)
+		pivot.add_child(inst)
+		_model_root.add_child(pivot)
+		return true
+	var ok := true
+	for p in parts:
+		var model: String = p[0]
+		if model == "kitchen":
+			ok = _kitchen_run(put, L, D, it) and ok
+		elif model.begins_with("tile:"):
+			var bits := model.split(":")
+			var n := maxi(1, int(round(L / float(bits[2]))))
+			for k in n:
+				ok = put.call(bits[1], L * k / n, L * (k + 1) / n, p[3] * D, p[4] * D, p[5], p[6]) and ok
+		else:
+			ok = put.call(model, p[1] * L, p[2] * L, p[3] * D, p[4] * D, p[5], p[6]) and ok
+	if not ok:
+		_model_root.free()
+		_model_root = null
+	return ok
+
+## A kitchen run: base units ~60 cm wide, the sink a third of the way along and the hob
+## two thirds (like the plan's drawing), wall cupboards over it.
+func _kitchen_run(put: Callable, L: float, D: float, it: Dictionary) -> bool:
+	var n := maxi(1, int(round(L / 0.6)))
+	var sink_k := int(n * 0.28)
+	var hob_k := mini(n - 1, int(n * 0.7))
+	var ok := true
+	for k in n:
+		var m := "kitchenCabinetDrawer" if k % 2 == 0 else "kitchenCabinet"
+		if L >= 1.4 and k == sink_k:
+			m = "kitchenSink"
+		elif L >= 1.4 and k == hob_k:
+			m = "kitchenStove"
+		ok = put.call(m, L * k / n, L * (k + 1) / n, 0.0, D, 0.0, 0.92) and ok
+		ok = put.call("kitchenCabinetUpper", L * k / n, L * (k + 1) / n, 0.0, minf(D, 0.35), 1.5, 0.7) and ok
+	return ok
 
 ## Walls, windows and rails, then the furniture that is in the way.
 func _blocks() -> Array:
