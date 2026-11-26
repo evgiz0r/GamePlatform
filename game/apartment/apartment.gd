@@ -570,7 +570,8 @@ func _view() -> void:
 		var size := Vector2(plan["size"][0], plan["size"][1])
 		# close and steep, so a piece is big enough to put a finger on
 		var dist := maxf(size.x, size.y) * 0.95
-		look_from(Vector3(_pos.x * 0.3, dist, _pos.y * 0.3 + dist * 0.38), Vector3(_pos.x * 0.3, 0, _pos.y * 0.3))
+		var tz := _pos.y * 0.3 + size.y * 0.1   # a little towards the balcony, which hangs off the front
+		look_from(Vector3(_pos.x * 0.3, dist, tz + dist * 0.38), Vector3(_pos.x * 0.3, 0, tz))
 	else:
 		var eye := Vector3(_pos.x, EYE, _pos.y)
 		var dirv := Vector3(-sin(_yaw) * cos(_pitch), sin(_pitch), -cos(_yaw) * cos(_pitch))
