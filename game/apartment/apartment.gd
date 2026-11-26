@@ -165,11 +165,7 @@ func _build() -> void:
 		_box(Vector3(a.x, H, a.y), Vector3(b.x, H + 0.1, b.y), C_CEIL)
 	_ceiling = _commit("Ceiling")
 	world.add_child(_ceiling)
-	# a slab under it all and round it, so the dollhouse does not float in the sky
-	var size := Vector2(plan["size"][0], plan["size"][1])
-	_box(Vector3(-size.x / 2 - 3, -0.4, -size.y / 2 - 3), Vector3(size.x / 2 + 3, -0.06, size.y / 2 + 3),
-		Color(0.55, 0.55, 0.56))
-	world.add_child(_commit("Slab"))
+	_build_outside()
 	# room names, seen from above
 	_labels = Node3D.new()
 	world.add_child(_labels)
@@ -246,7 +242,10 @@ func _wall(wr: Array) -> void:
 		"door":
 			box.call(DOOR_H, H, C_WALL)
 		"rail":
-			box.call(0.0, 1.05, Color(0.85, 0.84, 0.80))
+			# a low parapet, glass above it and a metal handrail on top
+			box.call(0.0, 0.25, C_EXT)
+			box.call(0.25, 1.02, C_GLASS, 0.01)
+			box.call(1.02, 1.07, C_STEEL, 0.03)
 			_solid.append(rect)
 
 ## Door leaves, standing open at a right angle into the room they swing into; the balcony
@@ -566,6 +565,7 @@ func _move(step: Vector2) -> void:
 
 func _view() -> void:
 	_ceiling.visible = not _doll
+	_above.visible = not _doll
 	_labels.visible = _doll
 	_figure.visible = _doll
 	_figure.position = Vector3(_pos.x, 0.85, _pos.y)
@@ -626,6 +626,16 @@ func _start_tour() -> void:
 				picks.append(i)
 		picks.sort_custom(func(p, q): return INTEREST.get(items[p]["name"], 0) > INTEREST.get(items[q]["name"], 0))
 		picks = picks.slice(0, 2)
+		if r["kind"] == "mirpeset":
+			# out on the balcony: to the rail, and look out over the street
+			var rc: Array = r["rect"]
+			var at := _w((rc[0] + rc[2]) / 2.0, rc[3] - 0.55)
+			var leg0 := _path(from, at)
+			_tour.append_array(leg0)
+			if not leg0.is_empty():
+				from = leg0[-1]
+			_tour.append({"view": true})
+			continue
 		if picks.is_empty():
 			var leg := _path(from, _w(r["label"][0], r["label"][1]))
 			_tour.append_array(leg)
@@ -693,7 +703,11 @@ func _head(delta: float) -> void:
 	var want_y := 0.0
 	var want_p := 0.0
 	var touring := not _tour.is_empty()
-	if touring and _tour[0] is Dictionary and _tour[0].has("look_at"):
+	if touring and _tour[0] is Dictionary and _tour[0].has("view"):
+		var t: float = _tour[0].get("t", 0.0)
+		want_p = -0.45 + 0.35 * smoothstep(1.5, 4.0, t)       # down at the street, then up
+		want_y = 0.7 * sin(maxf(t - 3.0, 0.0) * 0.9)           # along it one way and the other
+	elif touring and _tour[0] is Dictionary and _tour[0].has("look_at"):
 		var i: int = _tour[0]["look_at"]
 		var aim := _aim(i)
 		want_y = wrapf(aim.x - _yaw, -PI, PI)
@@ -717,8 +731,14 @@ func _head(delta: float) -> void:
 			else:
 				_glanced[_glance] = _tour_clock
 				_glance = -1
-	_caption(_tour[0]["look_at"] if touring and _tour[0] is Dictionary and _tour[0].has("look_at") \
-		else (_glance if touring else -1))
+	if touring and _tour[0] is Dictionary and _tour[0].has("view"):
+		_caption(-1)
+		if _look_label:
+			_look_label.text = "looking at the street"
+			_said = -3
+	else:
+		_caption(_tour[0]["look_at"] if touring and _tour[0] is Dictionary and _tour[0].has("look_at") \
+			else (_glance if touring else -1))
 	var k := 1.0 - exp(-delta * 3.0)
 	_head_yaw = lerpf(_head_yaw, want_y, k)
 	_head_pitch = lerpf(_head_pitch, want_p, k)
@@ -861,6 +881,14 @@ func _path(a: Vector2, b: Vector2) -> Array:
 
 ## Steer at the next waypoint: (forward, turn). Turns on the spot when facing away.
 func _tour_step(delta: float) -> Vector2:
+	if _tour[0] is Dictionary and _tour[0].has("view"):
+		# at the balcony rail: face the street, look down at it, then across and along it
+		_tour[0]["t"] = float(_tour[0].get("t", 0.0)) + delta
+		if _tour[0]["t"] > 7.0:
+			_tour.pop_front()
+			return Vector2.ZERO
+		var diff_v := wrapf(PI - _yaw, -PI, PI)   # +Z, the street side
+		return Vector2(0.0, clampf(diff_v * 1.2, -0.5, 0.5))
 	if _tour[0] is Dictionary and _tour[0].has("look_at"):
 		# stopped at a piece: turn the body to it, then stand and look for a while
 		var aim := _aim(_tour[0]["look_at"])
@@ -969,6 +997,117 @@ func _make_item(it: Dictionary) -> void:
 	world.add_child(node)
 	items.append({"node": node, "rect": Rect2(a, b - a), "name": it["name"],
 		"solid": it["name"] not in LOW, "room": it["room"], "face": it["face"], "home": c})
+
+## ---- outside: the building below the flat and a street in front -------------------
+##
+## The flat is on the third floor. Below it its own building goes down to the ground; in
+## front, past the balcony, a pavement with trees, a street with parked cars, and a row of
+## blocks across the road; more blocks to the sides and behind. All boxes merged by colour
+## (a few draws) plus a handful of Kenney trees and cars.
+
+const FLOOR_UP := 3                ## which floor the flat is on
+const STOREY := 3.0
+const C_PLASTER := [Color(0.92, 0.89, 0.82), Color(0.86, 0.84, 0.80), Color(0.90, 0.86, 0.76),
+	Color(0.80, 0.80, 0.78), Color(0.93, 0.91, 0.87)]
+const C_ROAD := Color(0.28, 0.28, 0.30)
+const C_PAVE := Color(0.70, 0.68, 0.64)
+const C_WIN := Color(0.25, 0.32, 0.40)
+var _above: Node3D
+
+func _build_outside() -> void:
+	var size := Vector2(plan["size"][0], plan["size"][1])
+	var g0 := -FLOOR_UP * STOREY      # the street's level
+	var hx := size.x / 2.0
+	var hz := size.y / 2.0
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(plan.get("seed", 1)) * 977
+	# the ground, the pavements and the street in front
+	_box(Vector3(-80, g0 - 0.3, -80), Vector3(80, g0, 80), Color(0.52, 0.50, 0.46))
+	var street_a := hz + 4.0
+	_box(Vector3(-80, g0, hz - 1.0), Vector3(80, g0 + 0.12, street_a), C_PAVE)
+	_box(Vector3(-80, g0 - 0.05, street_a), Vector3(80, g0 + 0.02, street_a + 9.0), C_ROAD)
+	for k in range(-40, 40):
+		_box(Vector3(k * 2.0, g0 + 0.02, street_a + 4.45), Vector3(k * 2.0 + 1.0, g0 + 0.03, street_a + 4.55), Color(0.9, 0.9, 0.85))
+	_box(Vector3(-80, g0, street_a + 9.0), Vector3(80, g0 + 0.12, street_a + 12.0), C_PAVE)
+	# our own building: from the street up to under the flat, and two storeys over it
+	_block(Vector3(-hx, g0, -hz), Vector3(hx, -0.06, hz), C_PLASTER[0], true)
+	# neighbours beside ours, across the street and behind
+	for side in [-1, 1]:
+		var x0 := hx + 4.0
+		var x := x0
+		while x < 70.0:
+			var w := rng.randf_range(12.0, 20.0)
+			var h := STOREY * rng.randi_range(4, 8)
+			var xa: float = side * x
+			var xb: float = side * (x + w)
+			_block(Vector3(minf(xa, xb), g0, -hz - 2), Vector3(maxf(xa, xb), g0 + h, hz), C_PLASTER[rng.randi() % 5], false)
+			x += w + rng.randf_range(3.0, 6.0)
+	var x2 := -70.0
+	while x2 < 70.0:
+		var w2 := rng.randf_range(12.0, 22.0)
+		var h2 := STOREY * rng.randi_range(4, 9)
+		_block(Vector3(x2, g0, street_a + 14.0), Vector3(x2 + w2, g0 + h2, street_a + 14.0 + rng.randf_range(12.0, 16.0)),
+			C_PLASTER[rng.randi() % 5], false)
+		x2 += w2 + rng.randf_range(3.0, 7.0)
+	var x3 := -70.0
+	while x3 < 70.0:
+		var w3 := rng.randf_range(14.0, 22.0)
+		var h3 := STOREY * rng.randi_range(5, 9)
+		if absf(x3 + w3 / 2) > hx + 6:
+			_block(Vector3(x3, g0, -hz - 22.0), Vector3(x3 + w3, g0 + h3, -hz - 8.0), C_PLASTER[rng.randi() % 5], false)
+		x3 += w3 + rng.randf_range(3.0, 6.0)
+	world.add_child(_commit("Outside"))
+	# the two storeys over the flat: their own mesh, hidden in the dollhouse with the ceilings
+	_block(Vector3(-hx, H + 0.1, -hz), Vector3(hx, H + 0.1 + 2 * STOREY, hz), C_PLASTER[0], true)
+	_above = _commit("Above")
+	world.add_child(_above)
+	# trees along both pavements, cars parked at the kerb
+	var tx := -60.0
+	while tx < 60.0:
+		for zz in [street_a - 1.2, street_a + 10.4]:
+			var t := model("tree-large", rng.randf_range(5.0, 7.5), "friend")
+			t.position = Vector3(tx + rng.randf_range(-1.0, 1.0), g0 + 0.12, zz)
+			t.rotation.y = rng.randf() * TAU
+			world.add_child(t)
+		tx += rng.randf_range(7.0, 10.0)
+	var cx := -50.0
+	var cars := ["sedan", "taxi", "suv", "van", "sedan", "sedan"]
+	while cx < 50.0:
+		if rng.randf() < 0.7:
+			var car := model(cars[rng.randi() % cars.size()], 4.3, "warn")
+			car.position = Vector3(cx, g0, street_a + (1.2 if rng.randf() < 0.5 else 7.8))
+			car.rotation.y = PI / 2 if car.position.z < street_a + 4 else -PI / 2
+			world.add_child(car)
+		cx += rng.randf_range(5.0, 7.0)
+
+## A block of flats as a box with rows of windows and balcony slabs on its faces. `own`
+## leaves the window rows off the top of our building (the flat's own windows are real).
+func _block(lo: Vector3, hi: Vector3, col: Color, own: bool) -> void:
+	_box(lo, hi, col)
+	var floors := int((hi.y - lo.y) / STOREY)
+	for f in floors:
+		var y := lo.y + f * STOREY
+		if f == 0 and not own:
+			# the entrance floor on columns: a dark band
+			_box(Vector3(lo.x + 0.4, y, lo.z + 0.4), Vector3(hi.x - 0.4, y + STOREY - 0.3, hi.z - 0.4), Color(0.35, 0.35, 0.36))
+			continue
+		# windows on the long faces (z), every 3.5 m, and a balcony slab now and then
+		var nx := int((hi.x - lo.x) / 3.5)
+		for k in nx:
+			var x := lo.x + (k + 0.5) * (hi.x - lo.x) / nx
+			for zf in [lo.z - 0.02, hi.z + 0.02]:
+				_box(Vector3(x - 0.8, y + 0.9, zf - 0.02), Vector3(x + 0.8, y + 2.2, zf + 0.02), C_WIN)
+			if k % 3 == 1:
+				_box(Vector3(x - 1.8, y - 0.05, hi.z), Vector3(x + 1.8, y + 0.15, hi.z + 1.4), col.darkened(0.08))
+				_box(Vector3(x - 1.8, y + 0.15, hi.z + 1.35), Vector3(x + 1.8, y + 1.05, hi.z + 1.4), Color(0.75, 0.82, 0.86, 0.5))
+		var nz := int((hi.z - lo.z) / 3.5)
+		for k in nz:
+			var z := lo.z + (k + 0.5) * (hi.z - lo.z) / nz
+			for xf in [lo.x - 0.02, hi.x + 0.02]:
+				_box(Vector3(xf - 0.02, y + 0.9, z - 0.8), Vector3(xf + 0.02, y + 2.2, z + 0.8), C_WIN)
+	# a roof edge
+	_box(Vector3(lo.x, hi.y, lo.z), Vector3(hi.x, hi.y + 0.6, lo.z + 0.25), col.darkened(0.1))
+	_box(Vector3(lo.x, hi.y, hi.z - 0.25), Vector3(hi.x, hi.y + 0.6, hi.z), col.darkened(0.1))
 
 ## ---- real furniture (Kenney's Furniture Kit, CC0, assets/models/furniture) ----------
 ##

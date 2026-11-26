@@ -66,6 +66,15 @@ func _run() -> void:
 					g._pos = p2
 				await _snap(kind)
 				break
+	# from the balcony rail, out over the street
+	for r in g.plan["rooms"]:
+		if r["kind"] == "mirpeset":
+			var rc: Array = r["rect"]
+			g._pos = g._w((rc[0] + rc[2]) / 2.0, rc[3] - 0.55)
+			g._yaw = PI
+			g._pitch = -0.3
+			await _snap("balcony")
+			g._pitch = -0.08
 	# the tour
 	var s: Array = g.plan["start"]
 	g._pos = g._w(s[0], s[1])
