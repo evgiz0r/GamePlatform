@@ -2945,6 +2945,17 @@ it is dropped.
   - **Wall stubs**: the bank started at 0.4 m of drop, and below it the wall did, so the foot
     of every bank had a low wall 2-3 m long standing alone. Banks now start at 0.15 m
     (`BANK_FROM`): Bedford's lone short runs 98 -> 54.
+  - **Round 3 (same day): a divided road's halves.** `_level_halves()` (setup, before
+    `_level_overlaps`) finds one-way embankment/bridge pieces of the same rank running the other
+    way that overlap or touch, and raises the lower one toward the other (0.05-1.2 m apart),
+    smoothed: the raise at each point is the largest wanted raise less `HALF_GRADE` (3%) per
+    metre away, and never more than 3% of the distance to the piece's nearest end, so the
+    ends stay where the joins put them. A first point-by-point raise left 16-22% kinks at the
+    Bedford Bypass bridge ends. Bedford seams 2630 -> 2437 (770 points raised, most 1.1 m);
+    all bridge drives in Bedford and Ashdod clean. **Not fixed**: the white edge across
+    Highway 102 by Meadowview is unchanged -- those halves are cut into short pieces, and
+    the fade to each piece's fixed ends leaves the difference where it shows. The real fix is
+    to give both halves the same heights in `infer()`, per node, before the pieces are cut.
 - **Still to do**: grass slopes for cuttings too (they are walled); a
   long-span bridge's height over water (the MacKay's deck is only as high as its ends);
   pavements at street level beside a cutting (the underpass has none); people on a bridge's

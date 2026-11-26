@@ -102,6 +102,7 @@ func setup() -> void:
 			g._hash_add(_hash, Rect2(pts[j], Vector2.ZERO).expand(pts[j + 1]).grow(float(r["foot"]) + 0.5), CELL, ri * 4096 + j)
 		for v in ys:
 			lowest = minf(lowest, v)
+	_level_halves()
 	_level_overlaps()
 	for ri: int in decks:   # which ends another deck carries on from
 		var r: Dictionary = g._roads[ri]
@@ -241,6 +242,72 @@ func _level_overlaps() -> void:
 				var was := ys[k]
 				ys[k] = clampf(ys[k], ys[prev] - room, ys[prev] + room)
 				easing = ys[k] != was
+		r["ys"] = ys
+
+## A divided road's two halves mapped closer than their widths overlap at the median, and
+## infer() lifted each on its own: across the road one stood up to a metre over the other (a
+## white edge across Highway 102's lanes by Meadowview, most of Bedford's seams). Where a
+## one-way deck's asphalt overlaps or touches (within 0.5 m) another one-way deck's of the
+## same rank running the other way, the lower is raised to the higher (raised, never lowered: a bridge keeps
+## its clearance), and eased back with the holds above.
+var halves_raised := 0
+const HALF_GRADE := 0.03      ## the most a raise adds to a half's grade: it fades to its ends
+func _level_halves() -> void:
+	var raises := {}   # road -> PackedFloat32Array, worked out from the heights as infer() left them
+	for ri: int in decks:
+		var r: Dictionary = g._roads[ri]
+		if not r["drive"] or int(r["o"]) == 0 or not String(r["deck"]) in ["em", "br"]:
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		var ys: PackedFloat32Array = r["ys"]
+		var hw := float(r["w"]) * 0.5
+		var want := PackedFloat32Array()
+		want.resize(pts.size())
+		var any := false
+		for j in range(1, pts.size() - 1):
+			var way := (pts[j + 1] - pts[j - 1]).normalized() * float(r["o"])
+			for code: int in g._near(g._seg_hash, pts[j], hw + 10.0, g.SEG_CELL):
+				var rj: int = code / 4096
+				var o: Dictionary = g._roads[rj]
+				if rj == ri or not o["drive"] or int(o["o"]) == 0 or not o.has("ys") or not String(o["deck"]) in ["em", "br"] \
+						or _rank(o) != _rank(r):
+					continue
+				var op: PackedVector2Array = o["pts"]
+				var sj: int = code % 4096
+				if (op[sj + 1] - op[sj]).normalized().dot(way) * float(o["o"]) > -0.8:
+					continue   # (not running the other way beside it)
+				var q := Geometry2D.get_closest_point_to_segment(pts[j], op[sj], op[sj + 1])
+				if q.distance_to(pts[j]) > float(o["w"]) * 0.5 + hw + float(o["side"]) + float(r["side"]) + 2.0 * WALL_T + 0.5:
+					continue   # (touching counts, shoulders and parapets too: two halves side by side,
+					           # one's shoulder standing over the other's -- Meadowview's white edge)
+				var dy := seg_y(rj, sj, q) - ys[j]
+				if dy > 0.05 and dy <= 1.2:
+					want[j] = maxf(want[j], dy)
+					any = true
+		if any:
+			raises[ri] = want
+	for ri: int in raises:
+		var r: Dictionary = g._roads[ri]
+		var pts: PackedVector2Array = r["pts"]
+		var ys: PackedFloat32Array = r["ys"]
+		var want: PackedFloat32Array = raises[ri]
+		var cum := PackedFloat32Array([0.0])
+		for j in range(1, pts.size()):
+			cum.append(cum[j - 1] + pts[j - 1].distance_to(pts[j]))
+		var length := cum[cum.size() - 1]
+		for k in range(1, pts.size() - 1):
+			# the most any point's wish reaches here, losing HALF_GRADE a metre, and never more
+			# than that from either end (an end stays where it is: on the ground, or level with
+			# the deck carrying on from it)
+			var d := 0.0
+			for j in range(pts.size()):
+				if want[j] > 0.0:
+					d = maxf(d, want[j] - HALF_GRADE * absf(cum[j] - cum[k]))
+			d = minf(d, HALF_GRADE * minf(cum[k], length - cum[k]))
+			if d > 0.01:
+				ys[k] += d
+				halves_raised += 1
+				leveled_max = maxf(leveled_max, d)
 		r["ys"] = ys
 
 ## node n is on some road other than ri that is not a deck

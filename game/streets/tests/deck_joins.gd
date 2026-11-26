@@ -52,7 +52,7 @@ func _run() -> void:
 				continue
 			var inn := pts[1] if end == 0 else pts[pts.size() - 2]
 			joins.append([ri, end, pts[j], (pts[j] - inn).normalized(), ground_r])
-	print("deck_joins: ", joins.size(), " joins of a drivable deck with a ground road; points leveled with an overlapping road: %d (most moved %.2f m)" % [d.leveled, d.leveled_max])
+	print("deck_joins: ", joins.size(), " joins of a drivable deck with a ground road; points leveled with an overlapping road: %d (of them a divided road's lower half raised: %d; most moved %.2f m)" % [d.leveled, d.halves_raised, d.leveled_max])
 	_check_drawn(d)
 	_check_ends(d)
 	_check_seams(d)
@@ -217,6 +217,7 @@ func _check_seams(d) -> void:
 	var n := 0
 	var total := 0
 	var worst: Array = []
+	var kinds := {}
 	for ri: int in d.decks:
 		var r: Dictionary = g._roads[ri]
 		if not r["drive"]:
@@ -229,6 +230,7 @@ func _check_seams(d) -> void:
 				var y: float = d.deck_y(ri, pts[i])
 				total += 1
 				var dy := 0.0
+				var kind := ""
 				for code: int in g._near(g._seg_hash, p, 8.0, g.SEG_CELL):
 					var rj: int = code / 4096
 					var o: Dictionary = g._roads[rj]
@@ -242,11 +244,16 @@ func _check_seams(d) -> void:
 					var dd := absf(y - oy)
 					if dd > 0.15 and dd < 1.2:
 						dy = maxf(dy, dd)
+						kind = ("a street on the ground" if not o.has("ys") else ("a tunnel or cutting" if not String(o["deck"]) in ["em", "br"]
+							else ("the other half" if int(o["o"]) != 0 and int(r["o"]) != 0 and d._rank(o) == d._rank(r) else "another deck")))
 				if dy > 0.0:
 					n += 1
+					kinds[kind] = int(kinds.get(kind, 0)) + 1
+					if kind == "the other half" and OS.get_environment("HALVES") != "" and int(kinds[kind]) % 60 == 1:
+						print("  half seam %.2f m at (%d, %d) road %d '%s' %s, its middle at %.2f" % [dy, p.x, p.y, ri, r.get("name", ""), r["deck"], y])
 					worst.append([dy, "%.2f m: road %d '%s' (%s) at (%d, %d)" % [dy, ri, r.get("name", ""), r["deck"], p.x, p.y]])
 	worst.sort_custom(func(a, b): return a[0] > b[0])
-	print("deck_joins: %d of %d deck edge points lie on another road's lanes 0.15-1.2 m above or below it (seams)" % [n, total])
+	print("deck_joins: %d of %d deck edge points lie on another road's lanes 0.15-1.2 m above or below it (seams), by what is under or over: %s" % [n, total, str(kinds)])
 	var shown := {}
 	for w: Array in worst:
 		var key := String(w[1]).get_slice("at", 0)
