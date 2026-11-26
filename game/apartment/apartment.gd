@@ -529,7 +529,10 @@ func _process(delta: float) -> void:
 		turn = tw.y
 	_yaw += turn * TURN * delta
 	var look := Vector2(-sin(_yaw), -cos(_yaw))
+	var was := _pos
 	_move(look * fwd * WALK * delta)
+	_bob += _pos.distance_to(was) * 7.0     # a step every ~0.9 m
+	_head(delta)
 	_view()
 	_where()
 
@@ -573,8 +576,10 @@ func _view() -> void:
 		var tz := _pos.y * 0.3 + size.y * 0.1   # a little towards the balcony, which hangs off the front
 		look_from(Vector3(_pos.x * 0.3, dist, tz + dist * 0.38), Vector3(_pos.x * 0.3, 0, tz))
 	else:
-		var eye := Vector3(_pos.x, EYE, _pos.y)
-		var dirv := Vector3(-sin(_yaw) * cos(_pitch), sin(_pitch), -cos(_yaw) * cos(_pitch))
+		var eye := Vector3(_pos.x, EYE + 0.022 * sin(_bob), _pos.y)
+		var hy := _yaw + _head_yaw
+		var hp := _pitch + _head_pitch
+		var dirv := Vector3(-sin(hy) * cos(hp), sin(hp), -cos(hy) * cos(hp))
 		look_from(eye, eye + dirv)
 
 func _room_at(p: Vector2) -> Dictionary:
@@ -610,19 +615,148 @@ func _start_tour() -> void:
 			continue
 		rooms.append(r)
 	rooms.sort_custom(func(p, q): return p["label"][0] < q["label"][0])
+	# in each room, walk up to its most interesting pieces (one or two) and look at them;
+	# a room with nothing worth a look gets a look round from its middle instead
 	var from := _pos
-	var stops: Array = []
 	for r in rooms:
-		stops.append(_w(r["label"][0], r["label"][1]))
-	stops.append(here)
-	for k in stops.size():
-		var leg := _path(from, stops[k])
-		_tour.append_array(leg)
-		if not leg.is_empty():
-			from = leg[-1]
-		if k < stops.size() - 1:
-			_tour.append({"look": true})   # stand in the middle of the room and look round
+		var picks := []
+		for i in items.size():
+			if items[i]["room"] == r["kind"] and _room_at(items[i]["rect"].get_center()).get("rect", []) == r["rect"] \
+					and INTEREST.get(items[i]["name"], 0) >= 2:
+				picks.append(i)
+		picks.sort_custom(func(p, q): return INTEREST.get(items[p]["name"], 0) > INTEREST.get(items[q]["name"], 0))
+		picks = picks.slice(0, 2)
+		if picks.is_empty():
+			var leg := _path(from, _w(r["label"][0], r["label"][1]))
+			_tour.append_array(leg)
+			if not leg.is_empty():
+				from = leg[-1]
+			_tour.append({"look": true})
+			continue
+		for i in picks:
+			var leg := _path(from, _stand_by(i))
+			_tour.append_array(leg)
+			if not leg.is_empty():
+				from = leg[-1]
+			_tour.append({"look_at": i})
+	_tour.append_array(_path(from, here))
 	Probe.event("tour")
+
+## How much a piece is worth stopping for, and how high its middle is (where the eye goes).
+const INTEREST := {"tv_unit": 5, "bed_double": 5, "sofa": 4, "dining_table": 4, "counter": 4,
+	"bed_single": 4, "bathtub": 4, "wardrobe": 3, "desk": 3, "shower": 3, "fridge": 3,
+	"sofa_bed": 3, "table_round": 3, "sink": 2, "lounger": 2, "plant": 2, "shelves": 2,
+	"washer": 2, "toilet": 1, "coffee_table": 1, "shoe_cabinet": 1, "nightstand": 1}
+const MID_H := {"bed_double": 0.5, "bed_single": 0.5, "sofa": 0.6, "sofa_bed": 0.6, "tv_unit": 0.95,
+	"wardrobe": 1.2, "desk": 0.9, "counter": 1.0, "fridge": 1.1, "dining_table": 0.75,
+	"bathtub": 0.5, "shower": 1.1, "toilet": 0.5, "sink": 1.0, "sink_small": 0.9, "washer": 0.6,
+	"shelves": 1.0, "plant": 0.6, "table_round": 0.7, "lounger": 0.4, "coffee_table": 0.4,
+	"shoe_cabinet": 0.7, "nightstand": 0.5, "chair": 0.5}
+
+## Which way a piece faces now (decorating may have turned it), world X/Z.
+func _front(i: int) -> Vector2:
+	var it: Dictionary = items[i]
+	var base: Vector2 = {"S": Vector2(0, 1), "N": Vector2(0, -1), "E": Vector2(1, 0), "W": Vector2(-1, 0)}[_face_of(i)]
+	var a: float = it["node"].rotation.y
+	return Vector2(base.x * cos(a) + base.y * sin(a), -base.x * sin(a) + base.y * cos(a))
+
+func _face_of(i: int) -> String:
+	return items[i]["face"]
+
+## Where a person would stand to look at a piece: a metre or so in front of it.
+func _stand_by(i: int) -> Vector2:
+	var r: Rect2 = items[i]["rect"]
+	var f := _front(i)
+	var half := absf(f.x) * r.size.x / 2.0 + absf(f.y) * r.size.y / 2.0
+	var p := r.get_center() + f * (half + 1.0)
+	# not out of its room: step back towards it until inside
+	for k in 8:
+		if _room_at(p).get("kind", "") != "":
+			break
+		p -= f * 0.15
+	return p
+
+var _bob := 0.0
+var _head_yaw := 0.0        ## the head, turned from where the body walks
+var _head_pitch := 0.0
+var _glance := -1           ## the piece the walker's eye is on while it walks past
+var _glance_t := 0.0
+var _glanced := {}          ## piece -> when it was last looked at (seconds of tour)
+var _tour_clock := 0.0
+
+## The head: forward while walking, turning to a piece it passes for a moment, and on a
+## piece it stopped at. Damped, so it moves like a head rather than a camera.
+func _head(delta: float) -> void:
+	_tour_clock += delta
+	var want_y := 0.0
+	var want_p := 0.0
+	var touring := not _tour.is_empty()
+	if touring and _tour[0] is Dictionary and _tour[0].has("look_at"):
+		var i: int = _tour[0]["look_at"]
+		var aim := _aim(i)
+		want_y = wrapf(aim.x - _yaw, -PI, PI)
+		want_p = aim.y
+		# eyes wander a little across it
+		want_y += 0.18 * sin(_tour_clock * 0.9)
+	elif touring and not (_tour[0] is Dictionary):
+		_glance_t -= delta
+		if _glance >= 0 and _glance_t <= 0.0:
+			_glanced[_glance] = _tour_clock
+			_glance = -1
+		if _glance < 0:
+			_glance = _pick_glance()
+			_glance_t = 1.6
+		if _glance >= 0:
+			var aim := _aim(_glance)
+			var off := wrapf(aim.x - _yaw, -PI, PI)
+			if absf(off) < 1.5:
+				want_y = off
+				want_p = aim.y
+			else:
+				_glanced[_glance] = _tour_clock
+				_glance = -1
+	var k := 1.0 - exp(-delta * 3.0)
+	_head_yaw = lerpf(_head_yaw, want_y, k)
+	_head_pitch = lerpf(_head_pitch, want_p, k)
+
+## Yaw and pitch from the eye to a piece's middle.
+func _aim(i: int) -> Vector2:
+	var c: Vector2 = items[i]["rect"].get_center()
+	var to := c - _pos
+	var h: float = MID_H.get(items[i]["name"], 0.7)
+	return Vector2(atan2(-to.x, -to.y), atan2(h - EYE, maxf(to.length(), 0.3)))
+
+## Something worth a glance: near, ahead or to the side, in sight, not just looked at.
+func _pick_glance() -> int:
+	var best := -1
+	var score := 0.0
+	for i in items.size():
+		var w: float = INTEREST.get(items[i]["name"], 0)
+		if w < 2 or _tour_clock - float(_glanced.get(i, -100.0)) < 8.0:
+			continue
+		var c: Vector2 = items[i]["rect"].get_center()
+		var d := c.distance_to(_pos)
+		if d > 4.0 or d < 0.6:
+			continue
+		var off := absf(wrapf(_aim(i).x - _yaw, -PI, PI))
+		if off > 1.2:
+			continue
+		if not _in_sight(c):
+			continue
+		var sc := w / (1.0 + d) * (1.3 - off)
+		if sc > score:
+			score = sc
+			best = i
+	return best
+
+func _in_sight(c: Vector2) -> bool:
+	var n := int(_pos.distance_to(c) / 0.1)
+	for k in range(1, n):
+		var p := _pos.lerp(c, float(k) / n)
+		for r: Rect2 in _solid:
+			if r.has_point(p):
+				return false
+	return true
 
 ## The way out of a point with the most room in front of it (to look at a room from).
 func _open_dir(p: Vector2) -> float:
@@ -695,6 +829,16 @@ func _path(a: Vector2, b: Vector2) -> Array:
 
 ## Steer at the next waypoint: (forward, turn). Turns on the spot when facing away.
 func _tour_step(delta: float) -> Vector2:
+	if _tour[0] is Dictionary and _tour[0].has("look_at"):
+		# stopped at a piece: turn the body to it, then stand and look for a while
+		var aim := _aim(_tour[0]["look_at"])
+		var diff_b := wrapf(aim.x - _yaw, -PI, PI)
+		_tour[0]["t"] = float(_tour[0].get("t", 0.0)) + delta
+		if _tour[0]["t"] > 3.2:
+			_glanced[_tour[0]["look_at"]] = _tour_clock
+			_tour.pop_front()
+			return Vector2.ZERO
+		return Vector2(0.0, clampf(diff_b * 1.2, -0.5, 0.5))
 	if _tour[0] is Dictionary:
 		# looking round: turn to the most open view, then slowly left, right, and back
 		if _look.is_empty() and _look_hold <= 0.0:
@@ -788,7 +932,7 @@ func _make_item(it: Dictionary) -> void:
 	_org = Vector3.ZERO
 	world.add_child(node)
 	items.append({"node": node, "rect": Rect2(a, b - a), "name": it["name"],
-		"solid": it["name"] not in LOW, "room": it["room"]})
+		"solid": it["name"] not in LOW, "room": it["room"], "face": it["face"], "home": c})
 
 ## Walls, windows and rails, then the furniture that is in the way.
 func _blocks() -> Array:
