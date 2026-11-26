@@ -5157,6 +5157,30 @@ stood 19-26 s; on two-way streets with 3 cars in the lane, 4 of 6 stood.
   0-5 on main too: main 0, 1, 4, 5 and this branch 0, 1, 4 -- noisy, not a verdict on one
   run), `load_bar` and `people_pops` (loading and walkers: other sessions' corners).
 
+## Bedford: a standoff at Giles Drive, a car park off a dead end (26 Nov 2026)
+The user, on the web build in Bedford: autodrive "slows down a lot, moving weirdly, even when
+alone on the road", then "need to fix these weird places and dead ends, always stuck there"
+(a shot of autodrive in a car park among parked cars off Meadowview Drive).
+- **Route 9 stood 230 s** at Hammonds Plains Road / Giles Drive (-2615, -695): turning left
+  into Giles, autodrive waited for a sedan nosing out of Giles; the sedan was held by
+  traffic's `_into_player` (why "player"), which resets its wait each tick, so the
+  face-to-face rule that sends a car elsewhere after 9 s never fired. After it went, the
+  next car out did the same. Autodrive's "ignore crossing cars after 3 s" (`lead_on`'s
+  ignore flag) did not get it out either: it lasts one tick, because `_ap_wait` is zeroed as
+  soon as the ignored car no longer limits the speed. Fix: racer's "nose to nose with a car
+  that waits for us: back off and plan again" now applies to autodrive too (AP_GIVE_S 5 s;
+  Probe event `autodrive_gave_way`). Route 9: arrived in 557 s (was 600 s, not arrived).
+  tests/turn_standoff.gd stages the spot but did not reproduce it with one car; the jam had
+  a queue round it. The one-tick ignore is still there (not changed: it is everywhere).
+- **Streets that end in a driveway/car park**: `_ap_ways` offered the driveway as the only
+  way on, so it was taken (service -6 only ranks it, it never refuses). Now `_ap_next`
+  treats a two-way street whose every way on is a service lane as a dead end and turns
+  round (roam only; tally `ap_lane_end_turn`). tests/dead_end_turns.gd counts those ends too.
+- **Go-to** (`_graph_roads`): service lanes cost 4x per metre, parking aisles/driveways 8x,
+  private ways 6x, so a route uses a car park only when there is no street way.
+- The "slows when alone" part: the drive log's slowdowns were real -- "curve" on bends
+  (46 -> 18 km/h on a sharp one) and "car" behind real cars 15-30 m ahead. Nothing phantom found.
+
 ## Open problems
 
 - **22 Nov, the second round of general bugs** (each with the test that measured it):
@@ -5595,6 +5619,14 @@ within 1.2 m behind it. Both have posts.
 - **Trolleys** (25 Nov, furniture.gd street_extras, `_trolley_kit`): by each OSM supermarket, a
   row of 3-6 nested along the front at the first clear spot out of the building toward its
   street, and one in three a stray 8-24 m down the pavement. Tel Aviv ~570, Givatayim ~100.
+- **Birds stuck in mid-air** (26 Nov, the user): the roof rows took a building and its height
+  from the town's lists (`_blds`, `_bld_top`), which hold buildings never drawn and know
+  nothing of the 0.7 m parapet -- rows sat over nothing, or under the parapet's top. Now only
+  a flat roof `_build_buildings` actually drew, at the height it drew its parapet's top
+  (`_roof_y`, NAN for the rest). "Too many pigeons": MAX_FLOCKS 6 -> 4, flocks 4-9 (was
+  5-12), rows on wires and roofs 2-6 (were 3-9 / 3-8). The check that should have caught it:
+  small_life's "off the roof" only asked whether the bird stood inside the outline, never
+  whether a roof was drawn there at that height.
 - **Open**: birds never perch on lamp tops; a flock
   spooked by traffic on the road only when it is your car; the crows look like grey pigeons
   scaled up (no separate black head and wings in the paint); gas cages only on streets

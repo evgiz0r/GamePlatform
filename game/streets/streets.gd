@@ -1017,6 +1017,7 @@ var _seg_hash := {}                  ## Vector2i cell -> Array of road * 4096 + 
 var _blds: Array = []                ## PackedVector2Array outlines, counter-clockwise
 var _bld_box: Array = []             ## Rect2 per building
 var _bld_solid := PackedByteArray()  ## 0 for a building raised on stilts you can drive under
+var _roof_y := PackedFloat32Array()  ## a drawn flat roof's edge height (its parapet's top), NAN for the rest and the not yet drawn (birds.gd)
 var _bld_kind := PackedByteArray()   ## 1 a block on columns, 2 a house with a pitched roof, 3 balconies
 var _bld_top := PackedFloat32Array() ## its walls' height (m), for a view from above kept over the roofs
 var _bld_hash := {}
@@ -2716,9 +2717,15 @@ func _build_graph() -> void:
 	# the cost of each point only they reach -- taken only where there is no other way. Left
 	# out, a street whose only ways out are private was cut off: "go to" from Timna in
 	# Givatayim, or to a close in Bedford, found no way at all (tests/route_check.gd)
-	for pass_pv: bool in [false, true]:
-		_graph_roads(pass_pv)
+	# (service lanes between the two, at SERVICE_COST: a car park's aisles and the lanes behind
+	# blocks are not streets -- at the cost of one, "go to" cut through them as shortcuts and
+	# autodrive ended up between parked cars, Bedford's Meadowview Drive, 26 Nov)
+	for pass_i: int in [0, 1, 2]:
+		_graph_roads(pass_i)
 	_find_pockets()
+
+const SERVICE_COST := 4.0            ## a service lane's points cost this many times a street's
+const SERVICE_AISLE_COST := 8.0      ## ... a car park's aisle, a driveway
 
 ## ---- pockets: streets you can drive into and not out of, or not into at all -----------------
 ## The bake cuts the town off at its edge, and with it the far ends of some one-way streets. A
@@ -2885,11 +2892,19 @@ func _graph_reach(from: int, adj: Dictionary) -> Dictionary:
 				todo.append(m)
 	return seen
 
-func _graph_roads(private: bool) -> void:
+func _graph_roads(pass_i: int) -> void:   # 0 streets, 1 service lanes, 2 private ways
 	for ri in range(_roads.size()):
 		var r: Dictionary = _roads[ri]
-		if not r["drive"] or bool(r["pv"]) != private:
+		if not r["drive"]:
 			continue
+		var kind := 2 if bool(r["pv"]) else (1 if r["k"] == "service" else 0)
+		if kind != pass_i:
+			continue
+		var cost := 1.0
+		if kind == 2:
+			cost = 6.0
+		elif kind == 1:
+			cost = SERVICE_AISLE_COST if String(r.get("sv", "")) in ["parking_aisle", "driveway", "drive-through"] else SERVICE_COST
 		var ids: PackedInt32Array = r["ids"]
 		for j in range(ids.size() - 1):
 			var a := ids[j]
@@ -2898,7 +2913,7 @@ func _graph_roads(private: bool) -> void:
 				continue
 			for id: int in [a, b]:
 				if not _astar.has_point(id):
-					_astar.add_point(id, _nodes[id], 6.0 if private else 1.0)
+					_astar.add_point(id, _nodes[id], cost)
 			if r["o"] != -1:
 				_astar.connect_points(a, b, false)
 				_edge_of[Vector2i(a, b)] = Vector3i(ri, j, 1)
@@ -3312,6 +3327,8 @@ func _build_setup(t0: int) -> void:
 	_build_asph_hash()
 	_bld_kind.resize((_city_data["buildings"] as Array).size())
 	_bld_kind.fill(0)
+	_roof_y.resize(_bld_kind.size())
+	_roof_y.fill(NAN)
 	for ni in _city_data.get("crossings", []):
 		_crossing_nodes.append(int(ni))
 		_crossing_set[int(ni)] = true
@@ -6764,6 +6781,8 @@ func _build_buildings() -> void:
 			"sgn": sgn, "gabled": gabled, "pilotis": pilotis, "lip": lip}
 		bd["_look"] = look
 		_bld_kind[bi] = 1 if pilotis else (2 if gabled else 0)
+		if not gabled and raised == 0.0 and bi < _roof_y.size():
+			_roof_y[bi] = h + lip   # (a flat roof as drawn: its parapet's top, where birds sit)
 		if raised == 0.0 and _ao != null:
 			if pilotis:   # the parking under it (round the lobby, 2.2 m in) in the shade, and a little out past its edge
 				var tao := Time.get_ticks_usec()
@@ -24759,14 +24778,17 @@ func _autodrive(dt: float) -> Array:
 	# (and when every way round it is refused for its back -- stood too close behind it to swing
 	# out: 70 s behind an SUV at a light on Bialik, every way out "its back at 3 m". A driver
 	# backs up a little and goes round.)
-	var behind_still: bool = racing and _ap_lead_i >= 0 and absf(_v) < 0.5 and float(lead[0]) - float(lead[2]) < 6.0 			and float(_traffic.cars[_ap_lead_i].v) < 0.3
+	# (not only racer: autodrive turning from Hammonds Plains Road into Giles Drive, Bedford's
+	# route 9, stood 230 s nose to nose with a sedan coming out of Giles that waited for it --
+	# then with the next one out. tests/turn_standoff.gd. The user: "always stuck there".)
+	var behind_still: bool = _ap_lead_i >= 0 and absf(_v) < 0.5 and float(lead[0]) - float(lead[2]) < 6.0 			and float(_traffic.cars[_ap_lead_i].v) < 0.3
 	# (counted behind the same car, whatever it says it waits for this moment: a motorbike
 	# waiting for racer tried edging by every 3.5 s, saying something else while it tried, and a
 	# count that restarted each time never got to 4 s -- 74 s on Bialik)
 	_race_nose_t = _race_nose_t + dt if behind_still and _ap_lead_i == _race_nose_i else 0.0
 	_race_nose_i = _ap_lead_i if behind_still else -1
-	var stuck_to: bool = behind_still and (String(_traffic.cars[_ap_lead_i].why) == "player" 			or (_race_by_why.contains("its back") and not _race_by_why.contains("v=")))
-	if stuck_to and _race_nose_t > RACE_GIVE_S and (_ap_lead_i != _race_gave or float(_traffic._clock) - _race_gave_at > 12.0):
+	var stuck_to: bool = behind_still and (String(_traffic.cars[_ap_lead_i].why) == "player" 			or (racing and _race_by_why.contains("its back") and not _race_by_why.contains("v=")))
+	if stuck_to and _race_nose_t > (RACE_GIVE_S if racing else AP_GIVE_S) and (_ap_lead_i != _race_gave or float(_traffic._clock) - _race_gave_at > 12.0):
 		# nose to nose with a car that waits for us (each held by the other): back off a car's
 		# length and plan again. Its own way out -- edging by -- tried every 3.5 s and never
 		# made it, and each try restarted the wait that sends it elsewhere: 25 s on Bialik
@@ -24775,7 +24797,7 @@ func _autodrive(dt: float) -> Array:
 		_race_gave_at = float(_traffic._clock)
 		_race_nose_t = 0.0
 		_ap_back = 1.6
-		Probe.event("racer_gave_way", {"to": String(_traffic.cars[_ap_lead_i].kind)})
+		Probe.event("racer_gave_way" if racing else "autodrive_gave_way", {"to": String(_traffic.cars[_ap_lead_i].kind)})
 	if float(lead[0]) < INF:
 		var lv: float = lead[1]
 		var li := int(lead[3])
@@ -25515,6 +25537,7 @@ func _ap_pass_bus(lead: Array) -> bool:
 ## the same car once stuck behind it (the first try did not clear it). True when it went.
 const RACE_CLEAR := 2.9      ## m from the car's middle to racer's line, going by it
 const RACE_OUT := [3.2, 6.4, 9.6, -3.2]   ## ways out tried: left one lane, two, three; right one
+const AP_GIVE_S := 5.0        ## ...and autodrive, a little more patient
 const RACE_GIVE_S := 4.0      ## s nose to nose with a car waiting for racer before it backs off
 var _race_gave := -1           ## the car it last backed off for (once each)
 var _race_nose_t := 0.0        ## s stood close behind the same still car
@@ -26436,6 +26459,16 @@ func _ap_next() -> bool:
 		# "turning round at a dead end"). Planned as a lane out and a lane back, the U-turn was a
 		# corner a few metres across taken at 2.5 m/s -- autodrive swung wide past the end into
 		# the trees and garden walls, or onto the footpath beyond and on along it at 40 km/h.
+		_ap_mark_dead_end()
+		return false
+	# a street that ends in nothing but lanes on -- a driveway, a car park's aisles: a dead end
+	# for a car out driving, turned round in like any other. Roaming down Bedford's Meadowview
+	# Drive (a cul-de-sac with a car park's driveway off its end), autodrive took the only way
+	# "on", into the car park, and stood among the parked cars (the user, 26 Nov: "need to fix
+	# these weird places and dead ends, always stuck there")
+	if not _dest_on and r["k"] != "service" and int(r["o"]) == 0 and back.x >= 0 \
+			and ways.all(func(w): return w["service"]):
+		_tally("ap_lane_end_turn", 1)
 		_ap_mark_dead_end()
 		return false
 	# every way on from here only runs off the map (a street the map's edge cut): turn round
