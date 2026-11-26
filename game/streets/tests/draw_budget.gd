@@ -67,9 +67,9 @@ func _kind(gi: GeometryInstance3D) -> String:
 		return "batched (one mesh a square and range)"
 	if m == g._wall_mat or m == g._roof_mat:
 		return "walls and roofs"
-	if m == g._ground_shader_mat or m == g._kerb_mat:
+	if m == g._ground._ground_shader_mat or m == g._kerb_mat:
 		return "ground and kerbs"
-	if code.contains("crown") or code.contains("bark") or code.contains("frond") or g._tree_mats.has(m):
+	if code.contains("crown") or code.contains("bark") or code.contains("frond") or g._trees._tree_mats.has(m):
 		return "trees"
 	if gi is MultiMeshInstance3D:
 		return "other multimeshes (kits)"

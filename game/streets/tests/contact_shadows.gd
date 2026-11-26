@@ -18,7 +18,7 @@ func _shot() -> Image:
 func _layer(on: bool) -> int:
 	var n := 0
 	for mi: MeshInstance3D in g.world.find_children("*", "MeshInstance3D", true, false):
-		if mi.mesh != null and mi.mesh.get_surface_count() > 0 and mi.mesh.surface_get_material(0) == g._ao_mat:
+		if mi.mesh != null and mi.mesh.get_surface_count() > 0 and mi.mesh.surface_get_material(0) == g._ao_kit._ao_mat:
 			mi.visible = on
 			n += 1
 	return n
@@ -105,14 +105,14 @@ func _run() -> void:
 	# the nearest parked car, from 5 m off its side
 	var cb := -1
 	var cd := INF
-	for i in range(g._ao_cars.size()):
-		var d: float = (g._ao_cars[i][0] as Vector2).distance_to(at)
+	for i in range(g._ao_kit._ao_cars.size()):
+		var d: float = (g._ao_kit._ao_cars[i][0] as Vector2).distance_to(at)
 		if d < cd:
 			cd = d
 			cb = i
 	if cb >= 0:
-		var c: Vector2 = g._ao_cars[cb][0]
-		var f: Vector2 = g._ao_cars[cb][1]
+		var c: Vector2 = g._ao_kit._ao_cars[cb][0]
+		var f: Vector2 = g._ao_kit._ao_cars[cb][1]
 		var e2 := c + f.orthogonal() * 5.0 + f * 3.0
 		print("parked car %d m from the point" % int(cd))
 		await _ab("car", Vector3(e2.x, g._h(e2) + 0.14 + 1.55, e2.y), Vector3(c.x, g._h(c) + 0.3, c.y))

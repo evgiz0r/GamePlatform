@@ -63,7 +63,7 @@ func _run() -> void:
 			await process_frame
 		print("far shadows %s %.1f s after the squares round the car (grass mask %s)" % [
 			"drawn" if g._fs_tex != null else "NOT drawn", (Time.get_ticks_msec() - tf) / 1000.0,
-			"the picture" if g._grass_mat != null and g._grass_mat.get_shader_parameter("mask") == g._fs_tex else "blank"])
+			"the picture" if g._grass_kit._grass_mat != null and g._grass_kit._grass_mat.get_shader_parameter("mask") == g._fs_tex else "blank"])
 		await create_timer(0.5).timeout
 		await _snap("soon_far_%d" % lvl)
 	# What made the wait: every square within NEAR_FIRST was built before the car was shown --

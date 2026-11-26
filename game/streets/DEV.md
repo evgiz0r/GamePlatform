@@ -13,7 +13,19 @@ merge, re-check (`tools/check_script.sh`, a playtest, the tests below), never fo
 
 | File | What |
 |---|---|
-| `streets.gd` | the game: loading and building the city, the car, autodrive, people, HUD, camera, quality, profiler (~11.5k lines) |
+| `streets.gd` | the game: loading and building the city, the car, autodrive, people, HUD, camera, quality, profiler (~26k lines, Nov 2026; parts are being split out, see "Splitting streets.gd" below) |
+| `car_bodies.gd` | the cars', the bus's, the truck's and the motorbikes' meshes from their side profiles (`CarMesh`, `_car_body`, `_bus_mesh`...); `_bodies` in streets.gd |
+| `ground.gd` | the bare ground's shader and its noise (`_ground`) |
+| `cockpit.gd` | the driver's seat: dashboard, wheel, pillars (`SEAT`, `_build_cockpit`; `_seat`) |
+| `talk.gd`, `carry.gd` | hands while talking (`Talk`), what people carry (`Held`, `_what_carried`...); `_talk`, `_carried` |
+| `contact_shadows.gd` | the AO layer under walls and parked cars (`_ao_kit`) |
+| `parks.gd` | parks, playgrounds and pitches (`_parks_kit`; `_obox`, used everywhere, stayed in streets.gd) |
+| `trees.gd` | trees: leaf cards, bark, palm fronds, their materials (`_trees`) |
+| `grass.gd` | grass blades near the camera and the paths cut through them (`_grass_kit`) |
+| `sky.gd` | the sky dome photograph (`SkyDome`, `_skydome`; `_evening` and `_sky_follow` stayed in streets.gd) |
+| `sounds.gd` | the engine and the street's own sounds (`_sounds`) |
+| `drive_map.gd` | the drive map drawn from the recorder (`_drive_map`; `_draw_hud` stayed in streets.gd) |
+| `head_look.gd` | the driver's head looking left and right (`_head_look`) |
 | `traffic.gd` | the AI traffic: spawning, paths, lanes, lights and signs, following, standoffs, drawing (multimeshes per car shape) |
 | `furniture.gd` | street furniture built after the places: power lines, lamps and bus-stop kits, flags, ads, fences and hedges, bike racks and scooters |
 | `drivelog.gd` | the drive recorder (see below) |
@@ -790,6 +802,47 @@ traffic.gd: `tick` (per car: path, lights, signs, the car or player ahead, stand
 `squeeze`), `_next` / `_leg` / `_turn_into` (routes), `_steer_lanes`, `lead_on` (the query
 autodrive uses), `push` (the player against the cars). `_junction_ahead` (giving way) skips a
 car `_held_at_red`: one that will stand at its red need not hold up a car with the green.
+
+## Splitting streets.gd (26 Nov 2026)
+
+streets.gd had grown to 29k lines. Whole sections now move into files of their own with
+`data_tools/split_section.py START END module.gd Const _var [--keep=a,b]` (START..END from one
+`## ---- ` header to the next): the lines go to a RefCounted that the game makes once
+(`var _var := Const.new(self)`) and that reaches back through a TYPED `g` (`const Streets :=
+preload("streets.gd")`, `var g: Streets` -- the cyclic preload is fine in Godot 4.7, and typed,
+every `:=` still infers and the parser still finds every mistake). The script prefixes names
+token by token (strings and comments left alone, a function's own locals never touched): in
+the module a game var/func becomes `g.x` and a const/class `Streets.X`; in streets.gd a moved
+one becomes `_var.x` / `Const.X`; in the other scripts and the tests `g.x` becomes
+`g._var.x`. `--keep` leaves helpers the other files call (`_obox`) and the game's own state
+(`_evening`) where they were. It prints what it cannot be sure of (a name in a string, a
+constant read by name through `get_script_constant_map()`, a local called `g`, renamed `g_`).
+
+What it cannot see, so check by hand: a test whose file name is the module's (it skipped
+those once: tests/grass.gd, head_look.gd, contact_shadows.gd were fixed by hand); tests and
+modules read through an untyped `g`, so a missed one fails only when it runs. Then
+`tools/check_script.sh` on streets.gd and the module, and `tests/fingerprint.gd` (below).
+
+Sections NOT worth moving as they are: "what breaks" (`_push_out`, `_people_at`, `add_person`
+are the collision core every file calls), "the loading bar" (holds `_exit_tree`), "the
+player's choices", "the route set", "going to an address" (`_route_to`, `_set_dest`: 30 tests),
+"where a frame's time goes", "people crossing at the zebras", "more kinds of people" and the
+wind turbines (each touched by a dozen other files). Split those by hand, function group by
+function group, if ever. Leave decks.gd, furniture.gd and the road/bridge sections alone while
+other threads are busy in them.
+
+**The fingerprint** (`tests/fingerprint.gd`, level 4, ~7 min; `HASH_SECS` of autodrive after,
+default 30): every mesh's vertices, colours, UVs and indices, every multimesh's instances,
+every still node's place, sorted, to `$OUT/fp_built.txt` and `fp_after_drive.txt` (and
+`fpinfo_*.txt`: each mesh's place in the tree, box and materials, to find one); the drive's
+path hashed. Two runs of the same code agree on the drive path and differ in ~95 of ~3,880
+things (people and cars move). So run the code before twice and after once and
+`python3 data_tools/fp_compare.py before1.txt before2.txt after.txt`: what the two befores
+agree on should be in the after, but a third run of the same code misses ~25 of them too, so
+look at WHAT differs (`fpinfo_*.txt`, by hash): it must only be people's bodies
+(`Superhero_*`, skinned and posed as they walk), multimeshes and Node3D places, never a town
+mesh. 26 Nov: the first split (13 sections) differed from main only in those, the drive path
+the same.
 
 ## The HUD's buttons (22 Nov 2026)
 

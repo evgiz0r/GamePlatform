@@ -127,7 +127,6 @@ const MASS := 1300.0
 const WHEELBASE := 2.65
 const CAR_LEN := 4.4
 const CAR_WIDTH := 1.9
-const CAR_HEIGHT := 1.55
 const ENGINE_F := 5200.0             ## pull off the line, ~4 m/s^2
 const POWER := 70000.0               ## then power-limited: ~150 km/h flat out
 const REVERSE_F := 3000.0
@@ -1099,7 +1098,6 @@ var _hstep := 1.0
 var _hnx := 0
 var _hnz := 0
 var _slope := 0.0                    ## the road's pitch under the car, radians (uphill +)
-var _signals: Array = []             ## per traffic-light group: {role -> MultiMesh}
 var _sig_mats: Array = []            ## [group][0 red, 1 yellow, 2 green] materials
 var _sig_phase := 0
 var _sig_t := 0.0
@@ -1510,8 +1508,8 @@ func start(_config: Dictionary) -> void:
 	_traffic = Traffic.new()
 	_traffic.setup(self)
 	_update_day()   # (Shabbat today: the shutters down, the streets quiet)
-	_build_engine()
-	_build_street_sounds()
+	_sounds._build_engine()
+	_sounds._build_street_sounds()
 	_build_signal_sounds()
 	if _place.has("walk"):
 		_film_begin(String(_place["walk"]))
@@ -2974,15 +2972,15 @@ func _build_world() -> bool:
 	# down only under 28 fps, to be set beside its film; the user, 22 Nov: "render less ... and
 	# same rule for all". Tests set a walk's quality themselves.)
 	_set_quality(QUALITY_WEB if OS.has_feature("web") else QUALITY.size() - 1)
-	sun.rotation_degrees = SKIES["day"]["sun"]
-	_build_sky_dome()
+	sun.rotation_degrees = SkyDome.SKIES["day"]["sun"]
+	_skydome._build_sky_dome()
 	cam.near = 0.3
 	cam.far = 2200.0
 	# the ground, well past the edges so the horizon is not a cliff
 	var ground := MeshInstance3D.new()
 	var pm := PlaneMesh.new()
 	pm.size = _bounds.size + Vector2(4000, 4000)
-	pm.material = _ground_mat()
+	pm.material = _ground._ground_mat()
 	ground.mesh = pm
 	ground.position = Vector3(_bounds.get_center().x, -0.4 if _hnx > 0 else 0.0, _bounds.get_center().y)
 	if _decks.any():   # (under the deepest cutting: it shows through the hole cut for it)
@@ -3010,7 +3008,7 @@ func _build_world() -> bool:
 	if not _far_later:
 		await _build_far_shadows()
 	var tgr := Time.get_ticks_usec()
-	_build_grass()
+	_grass_kit._build_grass()
 	_part_time("far shadows: grass blades", tgr)
 	_stage("far shadows", tf)
 	# the squares round the start before the car is shown; the rest while it drives
@@ -3443,7 +3441,7 @@ func _build_setup(t0: int) -> void:
 	_racer = Racer.new(self)
 	_lights_setup()
 	_infer_signs()   # (after the lights: a lit junction has none)
-	_parks_setup()
+	_parks_kit._parks_setup()
 	_trees_setup()
 	# every square with anything in it, and every square of the map (open land grows trees)
 	var todo := {}
@@ -3472,7 +3470,7 @@ func _build_tile(t: Vector2i) -> void:
 	for a: Array in [_stop_lines, _pole_plates, _chimneys, _mall_glass, _lobby_doors, _balcony_flags, _flag_spots, _stop_ads, _cat_spots, _car_flags, _yard_cars]:
 		a.clear()   # made by one builder for the next, square by square
 	var tk := Time.get_ticks_msec()
-	_ao = CBuf.new(GROUND_CELL)
+	_ao_kit._ao = CBuf.new(GROUND_CELL)
 	# every step behind `_step`: the frame handed back between any two of them if it is used up
 	# (decks, rails, marks, beach, works and places ran back to back unchecked: 50 ms on a
 	# desktop, tests/build_spans.gd), and the step's name kept for the hitch line
@@ -3518,16 +3516,16 @@ func _build_tile(t: Vector2i) -> void:
 	await _build_step("lamps")
 	await _build_lamps()
 	await _build_step("parks")
-	await _build_parks()
+	await _parks_kit._build_parks()
 	tk = _stage("lamps", tk)
 	await _build_step("parked")
 	await _build_parked()
 	await _build_step("lots")
 	await _build_lots()
 	await _build_step("contact shadows")
-	for mi: MeshInstance3D in _add_mesh(_ao, _ao_material(), false, AO_SEEN):   # (after the buildings and the cars)
+	for mi: MeshInstance3D in _add_mesh(_ao_kit._ao, _ao_kit._ao_material(), false, ContactShadows.AO_SEEN):   # (after the buildings and the cars)
 		mi.extra_cull_margin = 60.0   # (the trees' patches are moved out by the sun, in the shader)
-	_ao = null
+	_ao_kit._ao = null
 	tk = _stage("parked", tk)
 	await _build_step("signals")
 	await _build_signals()
@@ -4150,7 +4148,7 @@ func _build_terrain() -> void:
 			arr[Mesh.ARRAY_INDEX] = idx
 			var am := ArrayMesh.new()
 			am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
-			am.surface_set_material(0, _ground_mat())
+			am.surface_set_material(0, _ground._ground_mat())
 			var mi := MeshInstance3D.new()
 			mi.mesh = am
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -5881,7 +5879,7 @@ func _front_gate(gate: Array, run: PackedVector2Array, cum: PackedFloat32Array, 
 	var lay := Color(0.0, fposmod(atan2(nj.y, nj.x), PI) / PI, 0.0, 0.0)
 	var steps := maxi(1, int(ceil((depth + 0.3) / 2.5)))
 	var path: CBuf = fronts["path"]
-	_grass_cut((start + end) * 0.5, nj, (depth + 0.28) * 0.5 + 0.1, w + 0.15)
+	_grass_kit._grass_cut((start + end) * 0.5, nj, (depth + 0.28) * 0.5 + 0.1, w + 0.15)
 	for k in range(steps):
 		var u0 := float(k) / steps
 		var u1 := float(k + 1) / steps
@@ -5908,7 +5906,7 @@ func _front_gate(gate: Array, run: PackedVector2Array, cum: PackedFloat32Array, 
 				and _push_out(c + nj * 1.4, 1.0, false) == Vector2.ZERO and _clear_of_posts(c, 2.2):
 			_yard_cars.append([Transform3D(Basis(Vector3.UP, atan2(nj.x, nj.y)), _g3(c, 0.08)), CAR_MIX[hk % CAR_MIX.size()], hk])
 			_add_car_posts(c, nj)
-			_ao_car(c, nj, 0.12)
+			_ao_kit._ao_car(c, nj, 0.12)
 	elif hk < 35 and not _kept_clear(wall_mid):
 		# a metal arch over the gate, bougainvillea grown over it
 		var col: Color = _tone["railing"]
@@ -6783,15 +6781,15 @@ func _build_buildings() -> void:
 		_bld_kind[bi] = 1 if pilotis else (2 if gabled else 0)
 		if not gabled and raised == 0.0 and bi < _roof_y.size():
 			_roof_y[bi] = h + lip   # (a flat roof as drawn: its parapet's top, where birds sit)
-		if raised == 0.0 and _ao != null:
+		if raised == 0.0 and _ao_kit._ao != null:
 			if pilotis:   # the parking under it (round the lobby, 2.2 m in) in the shade, and a little out past its edge
 				var tao := Time.get_ticks_usec()
-				_ao_footprint(ring, sqrt(0.55), -2.4, Color(1.0, 0.55, 0.0))
-				_ao_footprint(ring, sqrt(0.55), 1.2)
+				_ao_kit._ao_footprint(ring, sqrt(0.55), -2.4, Color(1.0, 0.55, 0.0))
+				_ao_kit._ao_footprint(ring, sqrt(0.55), 1.2)
 				_part_time("buildings: contact shadows", tao)
 			else:
 				var tao2 := Time.get_ticks_usec()
-				_ao_footprint(ring)
+				_ao_kit._ao_footprint(ring)
 				_part_time("buildings: contact shadows", tao2)
 		if pilotis:
 			_lift_on_columns(ring, sgn, base, g_lo + 3.0, roofs, cores, look)
@@ -8136,7 +8134,7 @@ func _build_trees() -> void:
 			var c := _bounds.position + Vector2(gx + 0.5, gz + 0.5) * step
 			if not _mine(c) or _wild_made >= wild_cap:
 				continue
-			if _vnoise(c / 70.0) * 0.65 + _vnoise(c / 15.0) * 0.35 < thresh:
+			if _ground._vnoise(c / 70.0) * 0.65 + _ground._vnoise(c / 15.0) * 0.35 < thresh:
 				continue
 			rng.seed = gx * 73856093 + gz * 19349663
 			if rng.randf() > _wild_keep:
@@ -8176,7 +8174,7 @@ func _build_trees() -> void:
 				var hy := _h(p)
 				if hy < _mtn_from - 20.0 or not _mine(p) or _in_city(p):
 					continue
-				var clump := _vnoise(p / 90.0 + Vector2(3.0, 3.0)) * 0.6 + _vnoise(p / 24.0) * 0.4
+				var clump := _ground._vnoise(p / 90.0 + Vector2(3.0, 3.0)) * 0.6 + _ground._vnoise(p / 24.0) * 0.4
 				if clump < 0.47 + (hy - _mtn_from) / 900.0:
 					continue
 				var tilt := maxf(absf(_h(p + Vector2(3, 0)) - _h(p - Vector2(3, 0))), absf(_h(p + Vector2(0, 3)) - _h(p - Vector2(0, 3)))) / 6.0
@@ -8189,8 +8187,8 @@ func _build_trees() -> void:
 		_tally("mountain_trees", mtn.size())
 	_trees_made += spots.size()
 	for sp: Vector3 in spots:   # (where the birds are: the street sounds)
-		var sc := _cell(Vector2(sp.x, sp.y), SND_CELL)
-		_snd_trees[sc] = int(_snd_trees.get(sc, 0)) + 1
+		var sc := _cell(Vector2(sp.x, sp.y), Sounds.SND_CELL)
+		_sounds._snd_trees[sc] = int(_sounds._snd_trees.get(sc, 0)) + 1
 	if not grates.is_empty():
 		_chunked(_furn.grate_kit(), grates, 120.0)
 	if not pits.is_empty():
@@ -8250,7 +8248,7 @@ func _build_trees() -> void:
 		var bark := Color(1.9, 1.9, 1.8) if kind == "birch" else (Color(1.6, 1.55, 1.45) if kind == "eucalyptus" else Color(1, 1, 1))
 		# the leaves (the atlas cell rides in the colour's alpha); some of the round street
 		# trees are feathery, like the melias and jacarandas that line Israeli streets
-		var cell: int = LEAF_CELL.get(kind, 0)
+		var cell: int = Trees.LEAF_CELL.get(kind, 0)
 		if kind == "round" and rng.randf() < 0.3:
 			cell = 2
 		put.call(tpart, Transform3D(b * Basis.from_scale(Vector3(tw.x, tw.y, tw.x) * sc), base + b * Vector3(0, trunk_h * 0.5 * tw.y * sc, 0)), bark)
@@ -8259,7 +8257,7 @@ func _build_trees() -> void:
 		var tat := Time.get_ticks_usec()
 		_ao_tree(Vector2(sp.x, sp.y), cw.x * jitter.x * sc * (0.55 if tpart == "ptrunk" else 0.85), float(spec[4]) * sc + lift)
 		if not forest.has(si) and not mtn.has(si):   # the trunk's foot (the street's trees: not the parks', open land's or mountains')
-			_ao_disc(Vector2(sp.x, sp.y), (0.45 if tpart == "ptrunk" else 0.6) * sc, 0.7)
+			_ao_kit._ao_disc(Vector2(sp.x, sp.y), (0.45 if tpart == "ptrunk" else 0.6) * sc, 0.7)
 		_part_time("trees: shadows on the ground (far, trunk feet)", tat)
 	# a square that is mostly mountain woods: drawn from further off, as they are seen across
 	# the valley
@@ -8386,13 +8384,13 @@ func _trees_setup() -> void:
 	for gz in range(0, nz, 3):
 		for gx in range(0, nx, 3):
 			var c := _bounds.position + Vector2(gx + 0.5, gz + 0.5) * step
-			if _vnoise(c / 70.0) * 0.65 + _vnoise(c / 15.0) * 0.35 >= thresh:
+			if _ground._vnoise(c / 70.0) * 0.65 + _ground._vnoise(c / 15.0) * 0.35 >= thresh:
 				green += 9
 	_wild_keep = minf(1.0, float(wild_cap) * 1.4 / maxf(green, 1.0))
 	var leaf := _surface("leaf")   # (the hedges and bushes still use it plain)
 	leaf.vertex_color_use_as_albedo = true
 	_surface("trunk").vertex_color_use_as_albedo = true
-	var mats := _make_tree_mats()
+	var mats := _trees._make_tree_mats()
 	var palm_trunk := CylinderMesh.new()
 	palm_trunk.top_radius = 0.15
 	palm_trunk.bottom_radius = 0.24
@@ -8400,8 +8398,8 @@ func _trees_setup() -> void:
 	palm_trunk.radial_segments = 8
 	palm_trunk.rings = 1
 	palm_trunk.material = mats[3]
-	_tree_meshes = {"trunk": _trunk_mesh(3, mats[2]), "crown": _card_crown(CROWN_LUMPS, 28, mats[0]), "ptrunk": palm_trunk,
-		"fronds": _frond_mesh(mats[4]), "ftrunk": _trunk_mesh(0, mats[2]), "cone": _card_cone(70, mats[1])}
+	_tree_meshes = {"trunk": _trees._trunk_mesh(3, mats[2]), "crown": _trees._card_crown(Trees.CROWN_LUMPS, 28, mats[0]), "ptrunk": palm_trunk,
+		"fronds": _trees._frond_mesh(mats[4]), "ftrunk": _trees._trunk_mesh(0, mats[2]), "cone": _trees._card_cone(70, mats[1])}
 
 ## Trees by kind, after what the streets really have. Givatayim: big dark ficus, light
 ## feathery acacias and jacarandas, round street trees, olives, a few cypresses and Aleppo
@@ -8442,404 +8440,11 @@ func _tree_kind(look: String, wood: bool, r: float) -> String:
 	return "round"
 
 ## ---- trees: leaf cards, bark, palm fronds ------------------------------------------------
-## A crown is a cloud of cards, each a cluster of leaves from textures/leaves_atlas.png
-## (2x2: broad leaves, small narrow ones, feathery fronds, needle sprays; made by
-## textures/leaf_atlas.py from Poly Haven's CC0 leaf photos). The vertex shader turns every
-## card to face the camera (or the sun, in the shadow pass: dappled shadows), lights it as
-## if the crown were a soft ball, and gives every tree its own outline -- cards pushed out
-## here and in there, a few left out -- and a little sway in the wind. The leaf kind and the
-## colour come in each copy's instance colour (alpha: the atlas cell), so all of this costs
-## no more draw calls than the plain balls did. The photos are divided by each cell's average
-## colour, so the palette's leaf tone still decides the colour.
-const CROWN_SHADER := """
-shader_type spatial;
-render_mode cull_disabled, skip_vertex_transform;
-uniform sampler2D leaves : filter_linear_mipmap, repeat_disable;
-uniform vec3 leaf_col : source_color;
-uniform vec3 cell_mean[4];
-uniform float card_size = 0.5;     // half a card, in the crown's own size
-uniform float keep = 1.0;          // the share of cards drawn (fewer at the lowest quality)
-varying vec3 tint;
-varying vec2 cuv;
-varying float shade;
-varying float lighter;
-varying flat int cell;
-varying flat float core;   // 1 on a conifer's solid middle (UV2.y -1): plain geometry, no card
-float h1(float n) { return fract(sin(n * 12.9898) * 43758.5453); }
-void vertex() {
-	core = UV2.y < -0.5 ? 1.0 : 0.0;
-	tint = COLOR.rgb;
-	cell = int(clamp(floor(COLOR.a * 4.0), 0.0, 3.0));
-	if (core > 0.5) {
-		VERTEX = (MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
-		NORMAL = normalize((MODELVIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
-		cuv = vec2(0.5);
-		shade = 0.4;
-		lighter = 0.0;
-	} else {
-	vec3 o = MODEL_MATRIX[3].xyz;
-	float seed = h1(o.x * 0.37 + o.z * 1.13);
-	float r = UV2.x;        // the card's own random number
-	float out_ = UV2.y;     // 0 deep in the crown .. 1 at its surface
-	vec3 n = NORMAL;        // out from the crown's middle
-	vec3 p = VERTEX + n * (sin(dot(n, vec3(2.1, 1.3, 1.7)) * 2.0 + seed * 6.28) * 0.16
-		+ sin(dot(n, vec3(-1.4, 2.3, 0.9)) * 3.0 + seed * 11.0) * 0.1);
-	float sx = length(MODEL_MATRIX[0].xyz);
-	float sy = length(MODEL_MATRIX[1].xyz);
-	float sz = length(MODEL_MATRIX[2].xyz);
-	float sc = mix((sx + sz) * 0.5, sy, 0.25);
-	bool alive = fract(r * 13.7 + seed * 7.31) < keep * 0.9;
-	float s = alive ? card_size * (0.75 + 0.5 * fract(r * 5.3)) * sc * inversesqrt(keep) : 0.0;
-	vec3 c = (MODELVIEW_MATRIX * vec4(p, 1.0)).xyz;
-	float t = TIME * 1.1 + seed * 6.28;
-	c.x += (sin(t) * 0.035 + sin(t * 2.7 + r * 6.0) * 0.03 * out_) * sc;
-	vec2 k = UV * 2.0 - 1.0;
-	float a = r * 6.2832 + seed * 3.0;
-	VERTEX = c + vec3(k.x * cos(a) - k.y * sin(a), k.x * sin(a) + k.y * cos(a), 0.0) * s;
-	vec3 nv = normalize((MODELVIEW_MATRIX * vec4(n, 0.0)).xyz);
-	NORMAL = normalize(mix(nv, vec3(0.0, 0.0, 1.0), 0.2));
-	cuv = UV;
-	// deep in the crown and underneath it darker; some clumps lighter, some darker
-	shade = mix(0.58, 1.0, out_) * mix(0.78, 1.05, clamp(p.y * 0.5 + 0.5, 0.0, 1.0)) * (0.88 + 0.24 * h1(r * 3.1 + seed));
-	lighter = step(0.82, h1(r * 7.7 + seed * 2.0));
-	}
-}
-void fragment() {
-	vec2 uv = (cuv * 0.94 + 0.03 + vec2(float(cell % 2), float(cell / 2))) * 0.5;
-	vec4 t = texture(leaves, uv);
-	// smaller mipmaps average the leaves' edges away: thicken the alpha with distance, or
-	// far trees thin out to nothing
-	vec2 ts = uv * 1024.0;
-	vec2 dx = dFdx(ts);
-	vec2 dy = dFdy(ts);
-	float lod = max(0.0, 0.5 * log2(max(dot(dx, dx), dot(dy, dy))));
-	vec3 c = leaf_col * tint * clamp(t.rgb / cell_mean[cell], vec3(0.0), vec3(2.5)) * shade;
-	c *= mix(vec3(1.0), vec3(1.16, 1.1, 0.78), lighter * 0.8);
-	ALBEDO = core > 0.5 ? leaf_col * tint * shade : c;
-	ALPHA = core > 0.5 ? 1.0 : clamp(t.a * (1.0 + lod * 0.35), 0.0, 1.0);
-	ALPHA_SCISSOR_THRESHOLD = 0.5;
-	ROUGHNESS = 0.85;
-	SPECULAR = 0.25;
-}
-"""
+## In `trees.gd` (`Trees`, made once: `_trees`).
+const Trees := preload("res://game/streets/trees.gd")
+var _trees := Trees.new(self)
 
-## Bark: a photo (textures/) over its average, times the palette's trunk tone and the copy's
-## colour (birches and eucalyptus pale), with its bumps
-const BARK_SHADER := """
-shader_type spatial;
-uniform sampler2D bark_tex : filter_linear_mipmap_anisotropic, repeat_enable;
-uniform sampler2D bark_nrm : filter_linear_mipmap_anisotropic, repeat_enable;
-uniform vec3 bark_mean = vec3(0.5);
-uniform vec3 bark_col : source_color;
-uniform vec2 uv_scale = vec2(1.0, 1.0);
-uniform float textured = 1.0;
-void fragment() {
-	vec2 uv = UV * uv_scale;
-	vec3 c = bark_col * COLOR.rgb;
-	if (textured > 0.5) {
-		c *= clamp(texture(bark_tex, uv).rgb / bark_mean, vec3(0.0), vec3(2.5));
-		NORMAL_MAP = vec3(texture(bark_nrm, uv).rg, 1.0);
-	}
-	ALBEDO = c;
-	ROUGHNESS = 0.92;
-}
-"""
-
-## A palm frond: a strip along the frond (UV.y 0 at the trunk .. 1 at the tip, UV.x -1..1
-## across), cut by the shader into a rib and leaflets slanting out toward the tip, narrow
-## at both ends, the tips drying yellow
-const FROND_SHADER := """
-shader_type spatial;
-render_mode cull_disabled;
-uniform vec3 leaf_col : source_color;
-void fragment() {
-	float u = abs(UV.x);
-	float v = UV.y;
-	float edge = 0.1 + 0.9 * pow(sin(clamp(v, 0.0, 1.0) * 3.14159), 0.6);
-	float f = v * 34.0 - u * 1.8;
-	float k = fract(f);
-	float aa = fwidth(f) + 0.001;
-	float leaflet = 1.0 - smoothstep(0.58 - aa, 0.58 + aa, k);
-	float inside = 1.0 - smoothstep(edge - 0.04, edge, u);
-	float rib = 1.0 - smoothstep(0.03, 0.05, u);
-	ALPHA = max(rib, leaflet * inside);
-	ALPHA_SCISSOR_THRESHOLD = 0.5;
-	vec3 c = leaf_col * COLOR.rgb * (0.78 + 0.35 * u) * mix(1.06, 0.82, k);
-	c = mix(c, c * vec3(1.3, 1.18, 0.66), smoothstep(0.72, 1.0, v) * 0.6 * (1.0 - rib));
-	ALBEDO = mix(c, leaf_col * COLOR.rgb * vec3(1.1, 1.05, 0.7), rib * 0.6);
-	ROUGHNESS = 0.7;
-	SPECULAR = 0.3;
-}
-"""
-
-## a broad-leaved crown's lumps (middle, radius), in the crown's own size: close enough to
-## read as one crown, not a bunch of balls
-const CROWN_LUMPS := [[Vector3(0, 0, 0), 1.0], [Vector3(0.45, 0.1, 0.25), 0.78], [Vector3(-0.4, 0.15, -0.3), 0.75],
-	[Vector3(0.05, 0.45, -0.02), 0.72]]
-## the atlas cell each kind's leaves come from: 0 broad, 1 small and narrow, 2 feathery, 3 needles
-const LEAF_CELL := {"ficus": 0, "round": 0, "maple": 0, "oak": 0, "acacia": 2, "olive": 1, "birch": 1,
-	"eucalyptus": 1, "pine": 3, "cypress": 3, "spruce": 3, "date": 0, "fan": 0}
-## each cell's average colour as stored (leaf_atlas.py prints them), for the shader to divide by
-const LEAF_MEAN := [Vector3(0.332, 0.355, 0.113), Vector3(0.333, 0.357, 0.116),
-	Vector3(0.405, 0.433, 0.230), Vector3(0.200, 0.294, 0.138)]
-var _tree_mats: Array = []           ## [crown, cone, bark, palm bark, fronds] materials, for the palette
-
-func _tree_shader_mat(code: String) -> ShaderMaterial:
-	var m := ShaderMaterial.new()
-	var sh := Shader.new()
-	sh.code = code
-	m.shader = sh
-	return m
-
-## the materials, once per city: cards for crowns and cones (each its own card size), two
-## barks, the fronds
-func _make_tree_mats() -> Array:
-	var atlas := load(TEX_DIR + "leaves_atlas.png") as Texture2D
-	var means := PackedVector3Array(LEAF_MEAN)
-	var crown := _tree_shader_mat(CROWN_SHADER)
-	crown.set_shader_parameter("leaves", atlas)
-	crown.set_shader_parameter("cell_mean", means)
-	crown.set_shader_parameter("card_size", 0.5)
-	var cone := crown.duplicate() as ShaderMaterial
-	cone.set_shader_parameter("card_size", 0.75)
-	var bark := _tree_shader_mat(BARK_SHADER)
-	bark.set_shader_parameter("bark_tex", _tex("bark_brown_02_diff"))
-	bark.set_shader_parameter("bark_nrm", _tex("bark_brown_02_nor"))
-	bark.set_shader_parameter("bark_mean", TEX_MEAN["bark_brown_02"])
-	bark.set_shader_parameter("uv_scale", Vector2(1.0, 1.0))
-	var pbark := bark.duplicate() as ShaderMaterial
-	pbark.set_shader_parameter("bark_tex", _tex("palm_tree_bark_diff"))
-	pbark.set_shader_parameter("bark_nrm", _tex("palm_tree_bark_nor"))
-	pbark.set_shader_parameter("bark_mean", TEX_MEAN["palm_tree_bark"])
-	pbark.set_shader_parameter("uv_scale", Vector2(1.0, 3.5))
-	var fronds := _tree_shader_mat(FROND_SHADER)
-	_tree_mats = [crown, cone, bark, pbark, fronds]
-	_retint_trees()
-	_tree_quality()
-	return _tree_mats
-
-func _retint_trees() -> void:
-	if _tree_mats.is_empty():
-		return
-	for i in [0, 1, 4]:
-		(_tree_mats[i] as ShaderMaterial).set_shader_parameter("leaf_col", _tone["leaf"])
-	for i in [2, 3]:
-		(_tree_mats[i] as ShaderMaterial).set_shader_parameter("bark_col", _tone["trunk"])
-
-## the lowest web quality: two cards in three (each bigger), and plain bark
-func _tree_quality() -> void:
-	if _tree_mats.is_empty():
-		return
-	for i in [0, 1]:
-		(_tree_mats[i] as ShaderMaterial).set_shader_parameter("keep", 1.0 if _quality > 0 else 0.67)
-	for i in [2, 3]:
-		(_tree_mats[i] as ShaderMaterial).set_shader_parameter("textured", 1.0 if _quality > 0 else 0.0)
-
-## One card per corner set: VERTEX the card's middle (the shader spreads its corners across
-## the screen), UV the corner, UV2 (the card's random number, how far out of the crown it
-## is), NORMAL out from the crown's middle.
-func _cards_mesh(cards: Array, m: Material, core: Array = []) -> ArrayMesh:
-	var v := PackedVector3Array()
-	var nr := PackedVector3Array()
-	var uv := PackedVector2Array()
-	var uv2 := PackedVector2Array()
-	var col := PackedColorArray()
-	var idx := PackedInt32Array()
-	for cd: Array in cards:
-		var at: Vector3 = cd[0]
-		var n: Vector3 = cd[1]
-		var r: float = cd[2]
-		var o: float = cd[3]
-		var b := v.size()
-		for corner: Vector2 in [Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)]:
-			v.append(at)
-			nr.append(n)
-			uv.append(corner)
-			uv2.append(Vector2(r, o))
-			col.append(Color.WHITE)
-		idx.append_array([b, b + 1, b + 2, b, b + 2, b + 3])
-	# solid core triangles: [position, normal] per corner, UV2.y -1 so the shader leaves them be
-	for i in range(core.size()):
-		idx.append(v.size())
-		v.append(core[i][0])
-		nr.append(core[i][1])
-		uv.append(Vector2(0.5, 0.5))
-		uv2.append(Vector2(0.0, -1.0))
-		col.append(Color.WHITE)
-	var a := []
-	a.resize(Mesh.ARRAY_MAX)
-	a[Mesh.ARRAY_VERTEX] = v
-	a[Mesh.ARRAY_NORMAL] = nr
-	a[Mesh.ARRAY_TEX_UV] = uv
-	a[Mesh.ARRAY_TEX_UV2] = uv2
-	a[Mesh.ARRAY_COLOR] = col
-	a[Mesh.ARRAY_INDEX] = idx
-	var am := ArrayMesh.new()
-	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, a)
-	am.surface_set_material(0, m)
-	# the cards reach past their middles: a box round the whole crown, or a copy whose
-	# middle is just off screen is culled with its leaves still in view
-	am.custom_aabb = AABB(Vector3(-2.6, -2.2, -2.6), Vector3(5.2, 4.6, 5.2))
-	return am
-
-## a broad-leaved crown: cards through the same few lumps the plain crown had, most of them
-## near the outside so the outline is full
-func _card_crown(blobs: Array, n: int, m: Material) -> ArrayMesh:
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 4242
-	var vol := 0.0
-	for bl: Array in blobs:
-		vol += pow(float(bl[1]), 3.0)
-	var cards: Array = []
-	for _i in range(n):
-		var pick := rng.randf() * vol
-		var bl: Array = blobs[0]
-		for b2: Array in blobs:
-			pick -= pow(float(b2[1]), 3.0)
-			bl = b2
-			if pick <= 0.0:
-				break
-		var dir := Vector3(rng.randfn(), rng.randfn(), rng.randfn()).normalized()
-		var o := 0.35 + 0.65 * sqrt(rng.randf())
-		var at: Vector3 = (bl[0] as Vector3) + dir * float(bl[1]) * o
-		cards.append([at, (at + Vector3(0, 0.15, 0)).normalized(), rng.randf(), o])
-	return _cards_mesh(cards, m)
-
-## a conifer: cards up a cone (the old cone mesh's shape: 6 high, 1.8 round at the foot,
-## centred), more toward the foot, and one on the tip, round a dark solid cone a little
-## smaller: a real conifer is dense, and through a gap you see more needles, not sky
-func _card_cone(n: int, m: Material) -> ArrayMesh:
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 777
-	var cards: Array = [[Vector3(0, 2.75, 0), Vector3.UP, 0.5, 1.0]]
-	for _i in range(n - 1):
-		var y := -2.7 + 5.3 * pow(rng.randf(), 0.8)
-		var rmax := 1.8 * (3.0 - y) / 6.0
-		var o := 0.4 + 0.6 * sqrt(rng.randf())
-		var a := rng.randf() * TAU
-		var at := Vector3(cos(a) * rmax * o, y, sin(a) * rmax * o)
-		cards.append([at, Vector3(cos(a), 0.35, sin(a)).normalized(), rng.randf(), o])
-	var core: Array = []
-	var sides := 8
-	for j in range(sides):
-		var a0 := TAU * j / sides
-		var a1 := TAU * (j + 1) / sides
-		var p0 := Vector3(cos(a0) * 1.15, -2.9, sin(a0) * 1.15)
-		var p1 := Vector3(cos(a1) * 1.15, -2.9, sin(a1) * 1.15)
-		var tip := Vector3(0, 2.3, 0)
-		var n0 := Vector3(cos(a0), 0.25, sin(a0)).normalized()
-		var n1 := Vector3(cos(a1), 0.25, sin(a1)).normalized()
-		core.append_array([[p0, n0], [p1, n1], [tip, Vector3.UP]])
-	var am := _cards_mesh(cards, m, core)
-	am.custom_aabb = AABB(Vector3(-2.6, -3.6, -2.6), Vector3(5.2, 7.4, 5.2))
-	return am
-
-## A trunk (2.6 high, centred, like the cylinder it replaces) with smooth sides, bark UVs in
-## metres and, if asked, branches forking up into the crown from its top half, which show
-## through the gaps between the leaves
-class Tubes:
-	var v := PackedVector3Array()
-	var nr := PackedVector3Array()
-	var tg := PackedFloat32Array()
-	var uv := PackedVector2Array()
-	var col := PackedColorArray()
-	var idx := PackedInt32Array()
-
-	func tube(a: Vector3, b: Vector3, ra: float, rb: float, sides: int) -> void:
-		var axis := (b - a).normalized()
-		var side := axis.cross(Vector3.FORWARD if absf(axis.y) < 0.9 else Vector3.RIGHT).normalized()
-		var side2 := axis.cross(side)
-		var L := a.distance_to(b)
-		var base := v.size()
-		for j in range(sides + 1):
-			var ang := TAU * j / sides
-			var out := side * cos(ang) + side2 * sin(ang)
-			var along := -side * sin(ang) + side2 * cos(ang)
-			for e in range(2):
-				v.append(a.lerp(b, float(e)) + out * (ra if e == 0 else rb))
-				nr.append(out)
-				tg.append_array([along.x, along.y, along.z, 1.0])
-				uv.append(Vector2(float(j) / sides * 0.9 * (ra + rb) / 0.27, L * float(e)))
-				col.append(Color.WHITE)
-		# (wound clockwise seen from outside, Godot's front: it was the other way round for
-		# years -- every trunk drawn inside out, its near side culled and the far side's inside
-		# showing, lit from behind: tests/backface_scan.gd, 24 Nov 2026)
-		for j in range(sides):
-			var i0 := base + j * 2
-			idx.append_array([i0, i0 + 1, i0 + 2, i0 + 1, i0 + 3, i0 + 2])
-
-	func mesh(m: Material) -> ArrayMesh:
-		var a := []
-		a.resize(Mesh.ARRAY_MAX)
-		a[Mesh.ARRAY_VERTEX] = v
-		a[Mesh.ARRAY_NORMAL] = nr
-		a[Mesh.ARRAY_TANGENT] = tg
-		a[Mesh.ARRAY_TEX_UV] = uv
-		a[Mesh.ARRAY_COLOR] = col
-		a[Mesh.ARRAY_INDEX] = idx
-		var am := ArrayMesh.new()
-		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, a)
-		am.surface_set_material(0, m)
-		return am
-
-func _trunk_mesh(branches: int, m: Material) -> ArrayMesh:
-	var t := Tubes.new()
-	t.tube(Vector3(0, -1.3, 0), Vector3(0, 1.3, 0), 0.16, 0.11, 7)
-	for i in range(branches):
-		var ang := TAU * i / branches + 0.4
-		var d := Vector3(cos(ang) * 0.75, 1.0, sin(ang) * 0.75).normalized()
-		var s := Vector3(0, 0.45 + 0.3 * (i % 2), 0)
-		t.tube(s, s + d * 1.6, 0.075, 0.03, 5)
-	return t.mesh(m)
-
-## Palm fronds as strips the frond shader cuts into leaflets: nine drooping, three young ones
-## standing up in the middle. UV.x -1..1 across, UV.y 0 at the trunk .. 1 at the tip; the
-## two halves fold up a little from the rib, as real fronds do.
-func _frond_mesh(m: Material) -> ArrayMesh:
-	var v := PackedVector3Array()
-	var nr := PackedVector3Array()
-	var uv := PackedVector2Array()
-	var col := PackedColorArray()
-	var idx := PackedInt32Array()
-	for i in range(12):
-		var young := i >= 9
-		var a := TAU * i / 9.0 + 0.3 * (i % 2) if not young else TAU * (i - 9) / 3.0 + 0.5
-		var dir := Vector3(cos(a), 0, sin(a))
-		var side := Vector3(-dir.z, 0, dir.x)
-		var segs := 7
-		var base := v.size()
-		for s in range(segs + 1):
-			var t := float(s) / segs
-			var p := dir * 3.1 * t + Vector3(0, 2.1 * t - 2.8 * t * t, 0) if not young \
-				else dir * 1.1 * t + Vector3(0, 2.0 * t - 0.4 * t * t, 0)
-			var fwd := (dir * 3.1 + Vector3(0, 2.1 - 5.6 * t, 0)).normalized() if not young \
-				else (dir * 1.1 + Vector3(0, 2.0 - 0.8 * t, 0)).normalized()
-			var w := 0.48 if not young else 0.32
-			var fold := Vector3(0, 0.14, 0)
-			var up := side.cross(fwd).normalized()
-			if up.y < 0.0:
-				up = -up
-			for k in [-1.0, 0.0, 1.0]:
-				v.append(p + side * w * k + fold * absf(k))
-				nr.append(up)
-				uv.append(Vector2(k, t))
-				col.append(Color.WHITE)
-		for s in range(segs):
-			var r0 := base + s * 3
-			var r1 := r0 + 3
-			idx.append_array([r0, r1, r0 + 1, r0 + 1, r1, r1 + 1, r0 + 1, r1 + 1, r0 + 2, r0 + 2, r1 + 1, r1 + 2])
-	var arr := []
-	arr.resize(Mesh.ARRAY_MAX)
-	arr[Mesh.ARRAY_VERTEX] = v
-	arr[Mesh.ARRAY_NORMAL] = nr
-	arr[Mesh.ARRAY_TEX_UV] = uv
-	arr[Mesh.ARRAY_COLOR] = col
-	arr[Mesh.ARRAY_INDEX] = idx
-	var am := ArrayMesh.new()
-	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
-	am.surface_set_material(0, m)
-	return am
-
+## ---- roof kits, street lamps, their pools of light, lit shops -----------------------------
 ## Israeli roofs: solar water heaters ("dud shemesh"), a tilted panel facing south with
 ## its white tank behind, one to a handful per block depending on its size
 func _build_roof_kit() -> void:
@@ -9276,315 +8881,14 @@ func _make_pools(chunked := false) -> void:
 		_make_pools()   # (the lamps of squares built meanwhile)
 
 ## ---- the bare ground: patches, not one flat colour ------------------------------------------
-## Open land drawn in one colour read as empty, a grey plain. A shader breaks it into
-## patches of grass, bare earth and darker scrub (two sizes of noise, by world position, so
-## it does not swim): nothing more to draw, just a different colour per pixel. The north is
-## mostly green; Givatayim's few open lots are mostly dry.
-const GROUND_SHADER := """
-shader_type spatial;
-uniform vec4 base : source_color;
-uniform vec4 green : source_color;
-uniform vec4 dark : source_color;
-uniform float greenness = 0.5;
-uniform vec4 rock : source_color;
-uniform float textured = 1.0;
-// the made-up town's mountains (0: none): limestone in ledges, red soil, dark scrub and the
-// shadows of clouds going over, on every steep slope and everything above `mountain_from`
-uniform float mountains = 0.0;
-uniform float mountain_from = 100000.0;
-uniform vec4 scrub : source_color;
-uniform vec4 soil : source_color;
-uniform sampler2D grass_tex : filter_linear_mipmap_anisotropic, repeat_enable;
-uniform sampler2D grass_nrm : filter_linear_mipmap_anisotropic, repeat_enable;
-uniform vec3 grass_mean = vec3(0.5);
-varying vec3 wpos;
-varying float wup;
-float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
-float noise(vec2 p) {
-	vec2 i = floor(p);
-	vec2 f = fract(p);
-	vec2 u = f * f * (3.0 - 2.0 * f);
-	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
-}
-void vertex() {
-	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	wup = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz).y;
-}
-void fragment() {
-	float n = noise(wpos.xz / 70.0) * 0.65 + noise(wpos.xz / 15.0) * 0.35;
-	float g = smoothstep(0.62 - greenness * 0.45, 0.78 - greenness * 0.4, n);
-	vec3 c = mix(base.rgb, green.rgb, g);
-	c = mix(c, dark.rgb, smoothstep(0.62, 0.9, noise(wpos.xz / 31.0 + 17.0)) * 0.55);
-	// a mountainside steeper than any town street is bare rock, in bands and blotches
-	float bare = smoothstep(0.86, 0.74, wup + (noise(wpos.xz / 9.0) - 0.5) * 0.08);
-	vec3 stone = rock.rgb * (0.72 + 0.28 * noise(vec2(wpos.y * 0.45, (wpos.x + wpos.z) * 0.03))) * (0.85 + 0.3 * noise(wpos.xz / 6.0));
-	c = mix(c, stone, bare);
-	float mtn = 0.0;
-	if (mountains > 0.5) {
-		mtn = max(bare, smoothstep(mountain_from, mountain_from + 30.0, wpos.y + (noise(wpos.xz / 60.0) - 0.5) * 24.0));
-		// limestone laid down in beds: a ledge every 5 m or so of height, wavering, its face
-		// catching the light and a dark seam under it -- from the town they read as contours
-		// (beds 4-12 m thick by where you are, so they break up rather than ruling the slope)
-		float thick = mix(4.0, 12.0, noise(wpos.xz / 160.0 + 21.0));
-		float bed = fract(wpos.y / thick + (noise(wpos.xz / 34.0) - 0.5) * 1.3 + noise(wpos.xz / 9.0) * 0.12);
-		float face = smoothstep(0.0, 0.3, bed) * (1.0 - 0.5 * smoothstep(0.55, 1.0, bed));
-		vec3 m = rock.rgb * 0.7 * (0.75 + 0.35 * noise(wpos.xz / 13.0 + 3.0)) * mix(0.45, 1.05, face);
-		// red soil in hollows, and dark scrub and pine in the folds and low down, thinning
-		// toward the crests
-		m = mix(m, soil.rgb * (0.8 + 0.35 * noise(wpos.xz / 6.0)), smoothstep(0.56, 0.72, noise(wpos.xz / 26.0 + 40.0)) * 0.7);
-		float fold = noise(wpos.xz / 46.0 + 11.0) * 0.65 + noise(wpos.xz / 12.0 + 5.0) * 0.35;
-		float scrubby = smoothstep(0.46, 0.6, fold + (wup - 0.7) * 0.5 - max(wpos.y - mountain_from, 0.0) / 600.0);
-		m = mix(m, scrub.rgb * (0.65 + 0.6 * noise(wpos.xz / 3.5)), scrubby);
-		// a sprinkle of bushes over the bare rock too, darker dots that thin out with height
-		float dots = step(0.64 + max(wpos.y - mountain_from, 0.0) / 900.0, noise(wpos.xz / 2.2 + 9.0));
-		m = mix(m, scrub.rgb * 0.8, dots * (1.0 - scrubby) * 0.8);
-		// clouds' shadows drifting over
-		float cl = noise(wpos.xz / 190.0 + vec2(TIME * 0.011, TIME * 0.004)) * 0.7 + noise(wpos.xz / 75.0 + vec2(TIME * 0.019, 0.3)) * 0.3;
-		m *= 1.0 - 0.4 * smoothstep(0.56, 0.7, cl);
-		c = mix(c, m, mtn);
-	}
-	c *= 0.94 + 0.06 * noise(wpos.xz / 2.5);
-	if (textured > 0.5) {   // the lawn photo (see TONE_SHADER), over earth and grass alike
-		// Its 2 m repeat lines up into a grid further off, so it fades out with distance (the
-		// noise above, which never repeats, carries the far ground), and a second copy 7.3 m
-		// across, turned, breaks up the repeat nearer in.
-		float kd = 1.0 - smoothstep(25.0, 110.0, length(VERTEX));
-		vec2 uv = wpos.xz * 0.5;
-		vec3 t = texture(grass_tex, uv).rgb;
-		vec3 t2 = texture(grass_tex, vec2(wpos.z, -wpos.x) * 0.137 + vec2(0.31, 0.77)).rgb;
-		float lawn = (1.0 - bare * 0.6) * (1.0 - mtn * 0.75);   // less of the lawn photo on bare rock
-		// the lawn's colours only where it is grass: bare earth (and rock) takes just its light
-		// and dark -- its greens and yellows on grey earth came out as speckles of colour
-		vec3 lw = vec3(0.2126, 0.7152, 0.0722);
-		float gg = g * (1.0 - bare);
-		vec3 d1 = mix(vec3(dot(t, lw) / dot(grass_mean, lw)), t / grass_mean, gg);
-		vec3 d2 = mix(vec3(dot(t2, lw) / dot(grass_mean, lw)), t2 / grass_mean, gg);
-		c *= mix(vec3(1.0), clamp(d1, vec3(0.0), vec3(2.6)), 0.85 * kd * lawn);
-		c *= mix(vec3(1.0), clamp(d2, vec3(0.0), vec3(2.6)), 0.3 * lawn * (1.0 - smoothstep(60.0, 260.0, length(VERTEX))));
-		vec2 xy = (texture(grass_nrm, uv).rg * 2.0 - 1.0) * 0.8 * kd;
-		vec3 b = vec3(xy, sqrt(max(0.0, 1.0 - dot(xy, xy))));
-		vec3 tx = (VIEW_MATRIX * vec4(1.0, 0.0, 0.0, 0.0)).xyz;
-		tx = normalize(tx - NORMAL * dot(NORMAL, tx));
-		NORMAL = normalize(tx * b.x + cross(NORMAL, tx) * b.y + NORMAL * b.z);
-	}
-	ALBEDO = c * far_shade(wpos, length(VERTEX)) * mix(1.0, 0.82, wet * step(0.7, wup));   // (wet earth, darker)
-	ROUGHNESS = mix(0.95, 0.75, wet);
-}
-"""
-var _ground_shader_mat: ShaderMaterial
-
-func _ground_mat() -> ShaderMaterial:
-	if _ground_shader_mat == null:
-		_ground_shader_mat = ShaderMaterial.new()
-		var sh := Shader.new()
-		sh.code = _with_far(GROUND_SHADER)
-		_ground_shader_mat.shader = sh
-		_far(_ground_shader_mat)
-		_ground_shader_mat.set_shader_parameter("grass_tex", _tex("leafy_grass_diff"))
-		_ground_shader_mat.set_shader_parameter("grass_nrm", _tex("leafy_grass_nor"))
-		_ground_shader_mat.set_shader_parameter("grass_mean", TEX_MEAN["leafy_grass"])
-		_ground_shader_mat.set_shader_parameter("textured", 1.0 if _quality > 0 else 0.0)
-		_retint_ground()
-	return _ground_shader_mat
-
-func _retint_ground() -> void:
-	if _ground_shader_mat == null:
-		return
-	var north := String(_place.get("look", "")) == "north"
-	var base: Color = _tone["ground"]
-	var green: Color = _tone["grass"]
-	_ground_shader_mat.set_shader_parameter("base", base)
-	_ground_shader_mat.set_shader_parameter("green", green.lerp(base, 0.25))
-	_ground_shader_mat.set_shader_parameter("dark", green.lerp(Palette.col("bg"), 0.45))
-	_ground_shader_mat.set_shader_parameter("greenness", 0.8 if north else 0.3)
-	_ground_shader_mat.set_shader_parameter("rock", _tone["rock"])
-	# the made-up town's mountains (see GROUND_SHADER): dark olive scrub, red-brown soil
-	_ground_shader_mat.set_shader_parameter("mountains", 1.0 if _made_up and _hnx > 0 else 0.0)
-	_ground_shader_mat.set_shader_parameter("mountain_from", _mtn_from)
-	var veg := Palette.col("friend").lerp(Palette.col("warn"), 0.35)
-	_ground_shader_mat.set_shader_parameter("scrub", _natural(veg.lerp(Palette.col("bg"), 0.66), 0.5))
-	# (the palette's warn, its yellow, darkened and a touch of its hazard: an earth brown -- its
-	# hazard alone is pink in most palettes)
-	_ground_shader_mat.set_shader_parameter("soil", _natural(Palette.col("warn").lerp(Palette.col("hazard"), 0.25).lerp(Palette.col("bg"), 0.55), 0.4))
-
-## the same noise in script, for clumping what grows on open land where the green is
-func _vnoise(p: Vector2) -> float:
-	var i := p.floor()
-	var f := p - i
-	var u := f * f * (Vector2(3, 3) - 2.0 * f)
-	var a := _hash01(i)
-	var b := _hash01(i + Vector2(1, 0))
-	var c := _hash01(i + Vector2(0, 1))
-	var d := _hash01(i + Vector2(1, 1))
-	return lerpf(lerpf(a, b, u.x), lerpf(c, d, u.x), u.y)
-
-func _hash01(p: Vector2) -> float:
-	return fposmod(sin(p.dot(Vector2(12.9898, 78.233))) * 43758.5453, 1.0)
+## In `ground.gd` (`Ground`, made once: `_ground`).
+const Ground := preload("res://game/streets/ground.gd")
+var _ground := Ground.new(self)
 
 ## ---- parks and pitches ----------------------------------------------------------------------
-## Along the paths through a park: benches facing the path, low park lamps (lit at night,
-## with their pools). In a big enough park, a playground: a slide tower, swings and a
-## sandpit on a soft floor. On a sports pitch: its lines, and goals or basketball hoops.
-
-var _parks: Array = []               ## [outline, box] of the parks and lawns big enough for benches
-var _park_hash := {}
-
-func _parks_setup() -> void:
-	for kind: String in ["park", "grass"]:
-		for ring: PackedVector2Array in _area_rings.get(kind, []):
-			if _area(ring) >= 400.0:
-				_hash_add(_park_hash, _bld_box_of(ring), 60.0, _parks.size())
-				_parks.append([ring, _bld_box_of(ring)])
-
-func _build_parks() -> void:
-	var parks := _parks
-	var park_hash := _park_hash
-	var benches: Array = []
-	var posts: Array = []
-	var globes: Array = []
-	for ri: int in _tile_roads.get(_tile, []):
-		var r: Dictionary = _roads[ri]
-		if r["drive"]:
-			continue
-		if _over():
-			await _pause()
-		var flip := posmod(ri, 2) == 0
-		var pts: PackedVector2Array = r["pts"]
-		var hw: float = float(r["w"]) * 0.5
-		var s_bench := 6.0
-		var s_lamp := 12.0
-		for j in range(pts.size() - 1):
-			var a := pts[j]
-			var b := pts[j + 1]
-			var L := a.distance_to(b)
-			if L < 0.5:
-				continue
-			var d := (b - a) / L
-			var side := Vector2(-d.y, d.x)
-			var mid := (a + b) * 0.5
-			var inside := false
-			for pi: int in _near(park_hash, mid, 1.0, 60.0):
-				var pk: Array = parks[pi]
-				if (pk[1] as Rect2).grow(2.0).has_point(mid) and Geometry2D.is_point_in_polygon(mid, pk[0]):
-					inside = true
-					break
-			if not inside:
-				s_bench -= L
-				s_lamp -= L
-				continue
-			while s_bench < L:
-				flip = not flip
-				var out := side * (1.0 if flip else -1.0)
-				var q := a + d * s_bench + out * (hw + 0.75)
-				if _mine(q) and _push_out(q, 0.9, true) == Vector2.ZERO and _off_road(q, 1.0):
-					benches.append(Transform3D(Basis(Vector3.UP, atan2(-out.x, -out.y)), _g3(q, 0.0)))
-					_bench_spots.append([q, -out])   # (where someone sits: _place_sitters)
-					_add_post(q, 0.5)
-				s_bench += 19.0
-			s_bench -= L
-			while s_lamp < L:
-				var q := a + d * s_lamp - side * (hw + 0.6) * (1.0 if flip else -1.0)
-				if _mine(q) and _push_out(q, 0.5, true) == Vector2.ZERO and _off_road(q, 1.0):
-					var gy := _h(q)
-					posts.append(Transform3D(Basis(), Vector3(q.x, gy + 1.8, q.y)))
-					globes.append(Transform3D(Basis(), Vector3(q.x, gy + 3.75, q.y)))
-					_pool_at.append(Vector3(q.x, q.y, 4.5))
-					_add_post(q, 0.1)
-				s_lamp += 27.0
-			s_lamp -= L
-	var bench := _cached("bench", func() -> Mesh:
-		# the bench made with Blender (tools/blender/recipes/bench.py: slats, iron ends, arms);
-		# the boxes below if its file is missing
-		var made: ArrayMesh = _models.mesh("bench") if _models != null else null
-		if made != null:
-			made.surface_set_material(0, _surface("furniture"))
-			return made
-		var bench_buf := Buf.new()
-		_box(bench_buf, Vector3(0, 0.44, 0), Vector3(1.7, 0.07, 0.46))
-		_box(bench_buf, Vector3(0, 0.74, -0.22), Vector3(1.7, 0.36, 0.06))
-		for sx: float in [-0.72, 0.72]:
-			_box(bench_buf, Vector3(sx, 0.22, 0), Vector3(0.07, 0.44, 0.42))
-		var am := ArrayMesh.new()
-		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, bench_buf.arrays())
-		am.surface_set_material(0, _surface("furniture"))
-		return am)
-	_chunked(bench, benches, 160.0, [], null, true)
-	var post := CylinderMesh.new()
-	post.top_radius = 0.045
-	post.bottom_radius = 0.06
-	post.height = 3.6
-	post.radial_segments = 6
-	post.rings = 1
-	post.material = _surface("pole")
-	var globe := SphereMesh.new()
-	globe.radius = 0.22
-	globe.height = 0.44
-	globe.radial_segments = 8
-	globe.rings = 4
-	globe.material = _surface("lamp")
-	_chunked(post, posts, LAMP_RANGE)
-	_chunked(globe, globes, LAMP_RANGE)
-	# playgrounds, in the bigger parks
-	var play := {"friend": CBuf.new(CHUNK), "warn": CBuf.new(CHUNK), "accent": CBuf.new(CHUNK),
-		"player": CBuf.new(CHUNK), "pole": CBuf.new(CHUNK), "soft": CBuf.new(CHUNK), "sand": CBuf.new(CHUNK)}
-	var made := 0
-	for ring: PackedVector2Array in _rings_near("park") + _rings_near("grass"):
-		if _area(ring) < 1500.0 or not _ring_mine(ring):
-			continue
-		var spot := _clear_spot(ring, 7.0)
-		if not spot.is_finite():
-			continue
-		_playground(play, spot, float(posmod(_hash_i(spot), 360)) * PI / 180.0)
-		_landmarks.append([spot, "playground"])
-		made += 1
-	var mats := {"friend": mat("friend", 0.12), "warn": mat("warn", 0.12), "accent": mat("accent", 0.12),
-		"player": mat("player", 0.12), "pole": _surface("pole"), "soft": _surface("rubber"), "sand": _surface("sand")}
-	for k: String in play:
-		_add_mesh(play[k], mats[k], k != "soft" and k != "sand", 260.0)
-	# pitches: lines, and goals or hoops
-	var lines := CBuf.new(GROUND_CELL)
-	var frames := CBuf.new(CHUNK)
-	var pitches := 0
-	for ring: PackedVector2Array in _rings_near("pitch"):
-		if _ring_mine(ring):
-			_sports_pitch(ring, lines, frames)
-			pitches += 1
-	_add_mesh(lines, _surface("mark"), false, DETAIL_RANGE)
-	_add_mesh(frames, _surface("mark"), true, 260.0)
-	_tally("benches", benches.size())
-	_tally("playgrounds", made)
-	_tally("pitches", pitches)
-
-## a point inside `ring` with nothing solid or a path within `r` of it, nearest its middle
-func _clear_spot(ring: PackedVector2Array, r: float) -> Vector2:
-	var c := Vector2.ZERO
-	for p in ring:
-		c += p
-	c /= ring.size()
-	var box := _bld_box_of(ring)
-	var best := Vector2.INF
-	var bd := INF
-	for i in range(40):
-		var q := c if i == 0 else Vector2(lerpf(box.position.x, box.end.x, fposmod(i * 0.618, 1.0)),
-			lerpf(box.position.y, box.end.y, fposmod(i * 0.382 + 0.17, 1.0)))
-		if not Geometry2D.is_point_in_polygon(q, ring):
-			continue
-		var ok := true
-		for k in range(8):
-			var e := q + Vector2(cos(k * TAU / 8.0), sin(k * TAU / 8.0)) * r
-			if not Geometry2D.is_point_in_polygon(e, ring):
-				ok = false
-				break
-		if not ok or _push_out(q, r, true) != Vector2.ZERO:
-			continue
-		var hit := _nearest_seg(q, r + 3.0, false)
-		if not hit.is_empty() and float(hit["edge"]) < r:
-			continue
-		if q.distance_to(c) < bd:
-			bd = q.distance_to(c)
-			best = q
-	return best
-
+## In `parks.gd` (`Parks`, made once: `_parks_kit`).
+const Parks := preload("res://game/streets/parks.gd")
+var _parks_kit := Parks.new(self)
 ## a box turned by `yaw` about its own middle, into a Buf
 func _obox(buf: Buf, c: Vector3, size: Vector3, yaw: float, tilt := 0.0) -> void:
 	var basis := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, tilt)
@@ -9606,111 +8910,6 @@ func _obox(buf: Buf, c: Vector3, size: Vector3, yaw: float, tilt := 0.0) -> void
 ## a park's playground on a round soft floor: the slide, the swing set, a climbing dome, a
 ## see-saw and a picnic table (made with Blender: tools/blender/recipes/, stamped by models.gd into the palette's
 ## buffers, so a new look recolours them) and a sandpit. Laid out round `at`, `yaw` turning it.
-const PLAY_ROLES := {"paint": "warn", "paint2": "player", "paint3": "accent", "plastic": "friend",
-	"wood": "friend", "metal": "pole", "rubber": "pole", "dark": "pole", "*": "pole"}
-func _playground(b: Dictionary, at: Vector2, yaw: float) -> void:
-	var gy := _h(at)
-	var fwd := Vector2(sin(yaw), cos(yaw))
-	var side := Vector2(fwd.y, -fwd.x)
-	var P := func(q: Vector2, y: float) -> Vector3: return Vector3(q.x, gy + y, q.y)
-	var floor_buf: Buf = b["soft"]
-	var seg := 16
-	for i in range(seg):
-		var a0 := TAU * i / seg
-		var a1 := TAU * (i + 1) / seg
-		floor_buf.tri(P.call(at, 0.04), P.call(at + Vector2(cos(a0), sin(a0)) * 7.0, 0.04),
-			P.call(at + Vector2(cos(a1), sin(a1)) * 7.0, 0.04), Vector3.UP, Color.WHITE)
-	# each model's +X along `along`, its middle at q (the models' own frame: +X ahead, up)
-	var put := func(name: String, q: Vector2, along: Vector2) -> void:
-		var bs := Basis(Vector3(along.x, 0, along.y), Vector3.UP, Vector3(-along.y, 0, along.x))
-		_models.stamp_into(b, PLAY_ROLES, name, Transform3D(bs, P.call(q, 0.04)))
-	put.call("slide", at - side * 3.0 - fwd * 0.4, fwd)        # (down the chute along fwd)
-	_add_post(at - side * 3.0 - fwd * 1.6, 0.7)
-	put.call("swings", at + side * 3.2, side)                   # (the bar along fwd, swinging across)
-	_add_post(at + side * 3.2 + fwd * 1.7, 0.2)
-	_add_post(at + side * 3.2 - fwd * 1.7, 0.2)
-	put.call("climber", at + fwd * 4.2 - side * 1.2, fwd)
-	_add_post(at + fwd * 4.2 - side * 1.2, 1.9)
-	put.call("seesaw", at + fwd * 4.6 + side * 3.0, side)
-	put.call("picnic", at - fwd * 3.6 + side * 3.7, fwd)   # (a picnic table by the sandpit, for the grown-ups)
-	_add_post(at - fwd * 3.6 + side * 3.7, 0.9)
-	# the sandpit
-	var sp := at + fwd * -3.4
-	for e: float in [-1.5, 1.5]:
-		_obox(b["friend"], P.call(sp + fwd * e, 0.15), Vector3(3.2, 0.3, 0.15), yaw)
-		_obox(b["friend"], P.call(sp + side * e, 0.15), Vector3(3.2, 0.3, 0.15), yaw + PI * 0.5)
-	_obox(b["sand"], P.call(sp, 0.08), Vector3(2.9, 0.12, 2.9), yaw)
-
-## a pitch: the tightest rectangle round it, its lines (inset a metre), and a goal at each
-## end (a basketball hoop on a small court)
-func _sports_pitch(ring: PackedVector2Array, lines: Buf, frames: Buf) -> void:
-	var best := INF
-	var u := Vector2.RIGHT
-	var lo := Vector2.ZERO
-	var hi := Vector2.ZERO
-	for i in range(ring.size()):
-		var e := (ring[(i + 1) % ring.size()] - ring[i]).normalized()
-		if e == Vector2.ZERO:
-			continue
-		var v := Vector2(-e.y, e.x)
-		var mn := Vector2(INF, INF)
-		var mx := Vector2(-INF, -INF)
-		for p in ring:
-			var q := Vector2(p.dot(e), p.dot(v))
-			mn = mn.min(q)
-			mx = mx.max(q)
-		if (mx.x - mn.x) * (mx.y - mn.y) < best:
-			best = (mx.x - mn.x) * (mx.y - mn.y)
-			u = e
-			lo = mn
-			hi = mx
-	var v := Vector2(-u.y, u.x)
-	if hi.y - lo.y > hi.x - lo.x:   # u along the long side
-		var t := u
-		u = v
-		v = -t
-		var l2 := Vector2(-hi.y, lo.x)
-		var h2 := Vector2(-lo.y, hi.x)
-		lo = l2
-		hi = h2
-	var L := hi.x - lo.x
-	var W := hi.y - lo.y
-	if L < 12.0 or W < 7.0 or best > 12000.0:
-		return
-	_landmarks.append([u * (lo.x + hi.x) * 0.5 + v * (lo.y + hi.y) * 0.5, "pitch"])
-	var at := func(a: float, b: float) -> Vector2: return u * a + v * b
-	var strip := func(p0: Vector2, p1: Vector2) -> void:
-		var d := (p1 - p0).normalized()
-		var n := Vector2(-d.y, d.x) * 0.06
-		lines.quad3(_g3(p0 - n, 0.05), _g3(p1 - n, 0.05), _g3(p1 + n, 0.05), _g3(p0 + n, 0.05))
-	var x0 := lo.x + 1.0
-	var x1 := hi.x - 1.0
-	var y0 := lo.y + 1.0
-	var y1 := hi.y - 1.0
-	var cx := (x0 + x1) * 0.5
-	var cy := (y0 + y1) * 0.5
-	for e: Array in [[x0, y0, x1, y0], [x1, y0, x1, y1], [x1, y1, x0, y1], [x0, y1, x0, y0], [cx, y0, cx, y1]]:
-		strip.call(at.call(e[0], e[1]), at.call(e[2], e[3]))
-	var cr := minf(3.0, (y1 - y0) * 0.16)
-	for i in range(16):
-		var a0 := TAU * i / 16.0
-		var a1 := TAU * (i + 1) / 16.0
-		strip.call(at.call(cx + cos(a0) * cr, cy + sin(a0) * cr), at.call(cx + cos(a1) * cr, cy + sin(a1) * cr))
-	var yaw := atan2(u.x, u.y)
-	for end: Array in [[x0, 1.0], [x1, -1.0]]:
-		var g: Vector2 = at.call(end[0], cy)
-		var gy := _h(g)
-		if L >= 34.0:   # football: two posts and a bar
-			var gw := minf(5.0, (y1 - y0) * 0.3)
-			for sd: float in [-0.5, 0.5]:
-				var q := g + v * gw * sd
-				_obox(frames, Vector3(q.x, gy + 1.1, q.y), Vector3(0.1, 2.2, 0.1), yaw)
-			_obox(frames, Vector3(g.x, gy + 2.2, g.y), Vector3(gw + 0.1, 0.1, 0.1), yaw)
-		else:   # a hoop: a pole off the end line and a backboard over it
-			var q := g - u * 0.6 * float(end[1])
-			_obox(frames, Vector3(q.x, gy + 1.6, q.y), Vector3(0.12, 3.2, 0.12), yaw)
-			var bb := g + u * 0.3 * float(end[1])
-			_obox(frames, Vector3(bb.x, gy + 3.35, bb.y), Vector3(1.6, 1.0, 0.06), yaw)
 
 ## ---- night ---------------------------------------------------------------------------------
 ## The same city after dark: the sun down to a dim blue moon (and no shadows, which also
@@ -9888,7 +9087,7 @@ func _set_evening(on: bool) -> void:
 	if on == _evening:
 		return
 	_evening = on
-	sun.rotation_degrees = _sky_now()["sun"]
+	sun.rotation_degrees = _skydome._sky_now()["sun"]
 	_retint_city()
 	var key := "evening" if on else "day"
 	if _fs_cache.has(key):
@@ -10117,7 +9316,7 @@ func _build_parked() -> void:
 							var lean := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, -pitch) \
 								* Basis(Vector3.BACK, roll) * Basis(Vector3.FORWARD, -0.05 * sgn)
 							(xf_by[kind] as Array).append(Transform3D(lean, _g3(p, 0.1)))   # half up the kerb
-							_ao_car(p, face, KERB_H + 0.025)
+							_ao_kit._ao_car(p, face, KERB_H + 0.025)
 							var roll2 := posmod(_hash_i(p * 7.0), 1000)
 							if roll2 < 70:   # a flag on a stick at the back window on the road's side
 								var win := p - side * 0.86 - face * 0.5
@@ -10228,7 +9427,7 @@ func _build_lots() -> void:
 						var f := face.rotated(rng.randf_range(-0.05, 0.05))
 						var at := p + u * rng.randf_range(-0.15, 0.15) - face * 0.2
 						(xf_by[kind] as Array).append(Transform3D(Basis(Vector3.UP, atan2(f.x, f.y)), _g3(at, 0.02)))
-						_ao_car(at, f, Y_AREA + 0.035)
+						_ao_kit._ao_car(at, f, Y_AREA + 0.035)
 						if taken == 1:
 							_lot_at.append(at)
 						(cols_by[kind] as Array).append(palette[rng.randi() % palette.size()])
@@ -10273,7 +9472,7 @@ func _build_lots() -> void:
 						var kind: String = CAR_MIX[rng.randi() % CAR_MIX.size()]
 						var f := face.rotated(rng.randf_range(-0.05, 0.05))
 						(xf_by[kind] as Array).append(Transform3D(Basis(Vector3.UP, atan2(f.x, f.y)), _g3(p, 0.02)))
-						_ao_car(p, f, Y_AREA + 0.035)
+						_ao_kit._ao_car(p, f, Y_AREA + 0.035)
 						(cols_by[kind] as Array).append(palette[rng.randi() % palette.size()])
 						_add_car_posts(p, f)
 						cars += 1
@@ -10823,7 +10022,7 @@ func _car_material() -> ShaderMaterial:
 		m.set_shader_parameter("shirt_a", _tone["shirt_a"])
 		m.set_shader_parameter("shirt_b", _tone["shirt_b"])
 		if env != null and env.sky != null:
-			var rs := _sky_reflect()
+			var rs := _skydome._sky_reflect()
 			m.set_shader_parameter("sky_top", rs[0])
 			m.set_shader_parameter("sky_hor", rs[1])
 		if m == _player_car_mat:
@@ -10886,7 +10085,7 @@ func _parked_far_mesh() -> ArrayMesh:
 	var hw: float = shape[2]
 	var wz: float = shape[4]
 	var wr: float = shape[5]
-	var cm := CarMesh.new()
+	var cm := CarBodies.CarMesh.new()
 	var paint := Color(1, 1, 1, 1.0)
 	var glass := Color(_tone["carglass"], 0.75)
 	_far_prism(cm, PackedVector2Array(shape[0]), hw * 0.98, paint, paint, paint)
@@ -10902,7 +10101,7 @@ func _parked_far_mesh() -> ArrayMesh:
 
 ## a side outline (x along the car, y up) pushed `half` either side of the middle: its two
 ## faces in `side`, its edges in `edge`, the highest edge (a cabin's roof) in `roof`
-func _far_prism(cm: CarMesh, outline: PackedVector2Array, half: float, side: Color, edge: Color, roof: Color) -> void:
+func _far_prism(cm: CarBodies.CarMesh, outline: PackedVector2Array, half: float, side: Color, edge: Color, roof: Color) -> void:
 	var idx := Geometry2D.triangulate_polygon(outline)
 	for sx: float in [-1.0, 1.0]:
 		var nrm := Vector3(sx, 0, 0)
@@ -10944,15 +10143,15 @@ func _parked_mesh(kind := "sedan") -> ArrayMesh:
 	if _car_meshes.has(kind):
 		return _car_meshes[kind]
 	if kind == "bus":
-		return _bus_mesh()
+		return _bodies._bus_mesh()
 	if kind == "moto":
-		return _moto_mesh()
+		return _bodies._moto_mesh()
 	if kind == "moto_parked":
-		return _moto_mesh(false)
+		return _bodies._moto_mesh(false)
 	if kind == "truck":
-		return _truck_mesh()
+		return _bodies._truck_mesh()
 	var taxi := kind == "taxi"
-	var cm := _car_body("sedan" if taxi else kind, true)
+	var cm := _bodies._car_body("sedan" if taxi else kind, true)
 	if taxi:
 		# the roof sign: yellow, מונית on it front and back, lit at night (CAR_SHADER's
 		# signs; UV2 its middle)
@@ -10971,7 +10170,7 @@ func _parked_mesh(kind := "sedan") -> ArrayMesh:
 func _door_at(kind: String) -> Vector2:
 	var shape: Array = CAR_SHAPES["sedan" if kind == "taxi" else kind]
 	var zf: float = float(shape[4]) - float(shape[5]) - 0.14
-	return Vector2(_plan_w(zf, shape[2], shape[3]), zf)
+	return Vector2(_bodies._plan_w(zf, shape[2], shape[3]), zf)
 
 ## a car's front passenger door, open (traffic.gd's kerb car): its hinge at the origin, the
 ## door running back along -Z, its outside facing -X -- the painted skin to the waist, the trim
@@ -10990,9 +10189,9 @@ func _door_mesh(kind: String) -> ArrayMesh:
 	var long := dz.y + 0.19 * wz
 	var lift := 0.08 if k in ["suv", "van"] else (0.05 if k == "mpv" else 0.0)
 	var sill := 0.3 + lift
-	var waist := _span_at(low, dz.y - long * 0.5).y
+	var waist := _bodies._span_at(low, dz.y - long * 0.5).y
 	var top := minf((cab[1] as Vector2).y, (cab[2] as Vector2).y) - 0.06
-	var cm := CarMesh.new()
+	var cm := CarBodies.CarMesh.new()
 	var paint := Color(1, 1, 1, 1.0)
 	var b := Buf.new()
 	_box(b, Vector3(-0.015, (sill + waist) * 0.5, -long * 0.5), Vector3(0.05, waist - sill, long))
@@ -11023,657 +10222,10 @@ func _door_mesh(kind: String) -> ArrayMesh:
 	return am
 
 ## ---- car bodies ----------------------------------------------------------------------------
-## A car is built from its side profile (CAR_SHAPES) as two lofts with smooth normals. The
-## lower body is a rounded cross-section at each of a run of stations from the back to the
-## front, between the outline's bottom (the sills, the bumpers' curve) and its top (boot,
-## waist, bonnet), narrowing at the corners in plan; the cabin is a second loft from the
-## waist to the roof line, the windscreen and rear window its sloped ends, the pillars and the
-## roof rail in paint. So the light rolls over the shoulders, the bonnet and the roof instead
-## of breaking at flat sides. One indexed surface per car shape: each part (paint, glass,
-## trim, tyres, rims, lights, plates) is told apart by its vertex colour's alpha, for
-## CAR_SHADER, and the lower body's UV2 carries the wheels' place and size so the shader can
-## darken the wheel wells and draw the door seams.
-const CAR_CORNER := 0.45             ## the plan's corner radius, front and back (m)
+## In `car_bodies.gd` (`CarBodies`, made once: `_bodies`).
+const CarBodies := preload("res://game/streets/car_bodies.gd")
+var _bodies := CarBodies.new(self)
 
-class CarMesh:
-	var v := PackedVector3Array()
-	var n := PackedVector3Array()
-	var c := PackedColorArray()
-	var uv := PackedVector2Array()
-	var uv2 := PackedVector2Array()
-	var idx := PackedInt32Array()
-
-	func vert(p: Vector3, nrm: Vector3, col: Color, t := Vector2.ZERO, t2 := Vector2.ZERO) -> int:
-		v.append(p)
-		n.append(nrm)
-		c.append(col)
-		uv.append(t)
-		uv2.append(t2)
-		return v.size() - 1
-
-	## a triangle facing `out` (Godot's front faces are clockwise: the winding is fixed to match)
-	func tri(a: int, b: int, d: int, out: Vector3) -> void:
-		if (v[b] - v[a]).cross(v[d] - v[a]).dot(out) > 0.0:
-			idx.append_array([a, d, b])
-		else:
-			idx.append_array([a, b, d])
-
-	## a Buf's triangle soup as it is, in one colour (boxes: lights, trim)
-	func add_buf(b: Buf, col: Color, t2 := Vector2.ZERO) -> void:
-		for i in range(b.v.size()):
-			idx.append(vert(b.v[i], b.n[i], col, b.uv[i] if i < b.uv.size() else Vector2.ZERO, t2))
-
-	func mesh(m: Material) -> ArrayMesh:
-		var a := []
-		a.resize(Mesh.ARRAY_MAX)
-		a[Mesh.ARRAY_VERTEX] = v
-		a[Mesh.ARRAY_NORMAL] = n
-		a[Mesh.ARRAY_COLOR] = c
-		a[Mesh.ARRAY_TEX_UV] = uv
-		a[Mesh.ARRAY_TEX_UV2] = uv2
-		a[Mesh.ARRAY_INDEX] = idx
-		var am := ArrayMesh.new()
-		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, a)
-		am.surface_set_material(0, m)
-		return am
-
-## the side outline cut straight down at z: (its bottom, its top)
-func _span_at(outline: PackedVector2Array, z: float) -> Vector2:
-	var lo := INF
-	var hi := -INF
-	for i in range(outline.size()):
-		var a := outline[i]
-		var b := outline[(i + 1) % outline.size()]
-		if a.x == b.x or (a.x - z) * (b.x - z) > 0.0:
-			continue
-		var y := lerpf(a.y, b.y, (z - a.x) / (b.x - a.x))
-		lo = minf(lo, y)
-		hi = maxf(hi, y)
-	return Vector2(lo, hi) if lo <= hi else Vector2(0.5, 0.5)
-
-## the side outline cut across at height y: its front (or back) end
-func _end_at(outline: PackedVector2Array, y: float, front: bool) -> float:
-	var best := -INF if front else INF
-	for i in range(outline.size()):
-		var a := outline[i]
-		var b := outline[(i + 1) % outline.size()]
-		if a.y == b.y or (a.y - y) * (b.y - y) > 0.0:
-			continue
-		var z := lerpf(a.x, b.x, (y - a.y) / (b.y - a.y))
-		best = maxf(best, z) if front else minf(best, z)
-	return best
-
-## the body's half-width at z: full along the sides, rounding off at the four corners
-func _plan_w(z: float, hw: float, hl: float) -> float:
-	var d := absf(z) - (hl - CAR_CORNER)
-	if d <= 0.0:
-		return hw
-	return hw - CAR_CORNER + sqrt(maxf(CAR_CORNER * CAR_CORNER - d * d, 0.0))
-
-## how far the rounded corner pulls the front (or back) in at x off the middle
-func _plan_in(x: float, hw: float) -> float:
-	var d := absf(x) - (hw - CAR_CORNER)
-	if d <= 0.0:
-		return 0.0
-	return CAR_CORNER - sqrt(maxf(CAR_CORNER * CAR_CORNER - d * d, 0.0))
-
-## A loft through rings of points (one per station, the same count each), normals smoothed
-## over the grid and turned away from each station's middle; `part.call(i, j)` colours the
-## quad from station i, ring point j. A vertex is shared by the quads of one part only, so
-## glass and paint keep their own edges.
-func _loft(cm: CarMesh, rings: Array, mids: PackedVector3Array, closed: bool, part: Callable, t2: Vector2,
-		glass_t2 := Vector2.ZERO) -> void:
-	var count := rings.size()
-	var m: int = (rings[0] as PackedVector3Array).size()
-	var nrm: Array = []
-	for i in range(count):
-		var ring: PackedVector3Array = rings[i]
-		var prev: PackedVector3Array = rings[maxi(i - 1, 0)]
-		var next: PackedVector3Array = rings[mini(i + 1, count - 1)]
-		var nr := PackedVector3Array()
-		for j in range(m):
-			var jp := (j + 1) % m if closed else mini(j + 1, m - 1)
-			var jm := (j - 1 + m) % m if closed else maxi(j - 1, 0)
-			var nn := (ring[jp] - ring[jm]).cross(next[j] - prev[j])
-			if nn.length_squared() < 1e-12:
-				nn = ring[j] - mids[i]
-			nn = nn.normalized()
-			if nn.dot(ring[j] - mids[i]) < 0.0:
-				nn = -nn
-			nr.append(nn)
-		nrm.append(nr)
-	var made := {}
-	for i in range(count - 1):
-		for j in range(m if closed else m - 1):
-			var j1 := (j + 1) % m
-			var col: Color = part.call(i, j)
-			var pid := int(round(col.a * 100.0))
-			var q: Array = []
-			for ij: Vector2i in [Vector2i(i, j), Vector2i(i + 1, j), Vector2i(i + 1, j1), Vector2i(i, j1)]:
-				var key := (ij.x * 1000 + ij.y) * 1000 + pid
-				if not made.has(key):
-					made[key] = cm.vert((rings[ij.x] as PackedVector3Array)[ij.y], (nrm[ij.x] as PackedVector3Array)[ij.y], col, Vector2.ZERO,
-						glass_t2 if pid == 75 else t2)
-				q.append(made[key])
-			var out: Vector3 = ((rings[i] as PackedVector3Array)[j] + (rings[i + 1] as PackedVector3Array)[j1]) * 0.5 - (mids[i] + mids[i + 1]) * 0.5
-			cm.tri(q[0], q[1], q[2], out)
-			cm.tri(q[0], q[2], q[3], out)
-
-## A car body of a CAR_SHAPES kind, facing +Z, its wheels on y = 0. `extras`: the wheels,
-## lights and number plates too (the player's car has its own, which turn and light up).
-func _car_body(kind: String, extras: bool) -> CarMesh:
-	var shape: Array = CAR_SHAPES[kind]
-	var low := PackedVector2Array(shape[0])
-	var cab: Array = shape[1]
-	var hw: float = shape[2]
-	var hl: float = shape[3]
-	var wz: float = shape[4]
-	var wr: float = shape[5]
-	var lift := 0.08 if kind in ["suv", "van"] else (0.05 if kind == "mpv" else (0.12 if kind == "truck" else 0.0))
-	var cm := CarMesh.new()
-	var paint := Color(1, 1, 1, 1.0)
-	var glass := Color(_tone["carglass"], 0.75)
-	var trim := Color(_tone["cartrim"], 0.5)
-	var wheels := Vector2(wz, wr)
-	var zmin := INF
-	var zmax := -INF
-	for p in low:
-		zmin = minf(zmin, p.x)
-		zmax = maxf(zmax, p.x)
-	# ---- the lower body: 16 stations, closer together toward the ends where it curves
-	var rings: Array = []
-	var mids := PackedVector3Array()
-	var stations := 16
-	for i in range(stations):
-		var z := lerpf(zmin + 0.004, zmax - 0.004, 0.5 - 0.5 * cos(PI * i / (stations - 1)))
-		var sp := _span_at(low, z)
-		var yb := sp.x
-		var yt := sp.y
-		var h := maxf(yt - yb, 0.001)
-		var w := _plan_w(z, hw, hl)
-		var half: Array = [Vector2(0.0, yb), Vector2(w - 0.12, yb), Vector2(w - 0.03, yb + minf(0.07, h * 0.25)),
-			Vector2(w, yb + h * 0.45), Vector2(w - 0.025, yt - minf(0.09, h * 0.25)),
-			Vector2(w - 0.09, yt - minf(0.012, h * 0.05)), Vector2(w * 0.55, yt + 0.025), Vector2(0.0, yt + 0.035)]
-		var ring := PackedVector3Array()
-		for p: Vector2 in half:
-			ring.append(Vector3(p.x, p.y, z))
-		for k in range(half.size() - 2, 0, -1):
-			ring.append(Vector3(-(half[k] as Vector2).x, (half[k] as Vector2).y, z))
-		rings.append(ring)
-		mids.append(Vector3(0.0, (yb + yt) * 0.5, z))
-	_loft(cm, rings, mids, true, func(_i: int, _j: int) -> Color: return paint, wheels)
-	# ---- the cabin, from the waist to the roof line
-	var c0: Vector2 = cab[0]   # windscreen foot
-	var c1: Vector2 = cab[1]   # windscreen top
-	var c2: Vector2 = cab[2]   # rear top
-	var c3: Vector2 = cab[3]   # rear foot
-	var pillars: Array = [-0.26] if kind in ["sedan", "hatch"] else ([-0.32] if kind == "mini" else [-0.2, -1.25])
-	var zs: Array = []
-	for k in range(9):
-		zs.append(lerpf(c3.x, c0.x, k / 8.0))
-	zs.append_array([c1.x, c2.x])
-	for pz: float in pillars:
-		zs.append_array([pz - 0.06, pz + 0.06])
-	var back_pillar := c2.x + 0.05 if kind in ["sedan", "hatch", "mini"] else c3.x + 0.18
-	zs.append(back_pillar)
-	zs.sort()
-	var cz: Array = []
-	for z: float in zs:
-		if cz.is_empty() or z - float(cz[-1]) > 0.01:
-			cz.append(clampf(z, c3.x, c0.x))
-	var roof := func(z: float) -> float:
-		if z >= c1.x:
-			return lerpf(c1.y, c0.y, inverse_lerp(c1.x, c0.x, z))
-		if z >= c2.x:
-			return lerpf(c2.y, c1.y, inverse_lerp(c2.x, c1.x, z))
-		return lerpf(c3.y, c2.y, inverse_lerp(c3.x, c2.x, z))
-	rings = []
-	mids = PackedVector3Array()
-	for z: float in cz:
-		var yb := _span_at(low, z).y
-		var top := maxf(float(roof.call(z)), yb + 0.004)
-		var w := _plan_w(z, hw, hl)
-		var wb := w - 0.05
-		var wt := w - 0.27
-		var gh: Array = [Vector2(wb, yb - 0.01), Vector2(wt, maxf(yb, top - 0.05)), Vector2(wt - 0.07, top), Vector2(0.0, top + 0.02)]
-		var ring := PackedVector3Array()
-		for p: Vector2 in gh:
-			ring.append(Vector3(p.x, p.y, z))
-		for k in range(gh.size() - 2, -1, -1):
-			ring.append(Vector3(-(gh[k] as Vector2).x, (gh[k] as Vector2).y, z))
-		rings.append(ring)
-		mids.append(Vector3(0.0, yb - 0.3, z))
-	var cab_part := func(i: int, j: int) -> Color:
-		var zc := (float(cz[i]) + float(cz[i + 1])) * 0.5
-		if j == 1 or j == 4:
-			return paint                      # the roof rail, the A- and C-pillars' edges
-		if j == 2 or j == 3:
-			return glass if (zc > c1.x or zc < c2.x) else paint   # windscreen, rear window / roof
-		if zc < back_pillar:
-			return paint
-		for pz: float in pillars:
-			if absf(zc - pz) < 0.06:
-				return paint                  # the B-pillar (an SUV's and a van's C too)
-		return glass
-	# the glass carries where the front seats are -- just behind the windscreen's foot, the
-	# cushion a little under the waist -- for the shader's people
-	var seats := Vector2(c0.x - (0.75 if kind == "truck" else (1.3 if kind in ["suv", "van", "mpv"] else 1.15)), _span_at(low, c0.x).y - 0.45)
-	_loft(cm, rings, mids, false, cab_part, Vector2.ZERO, seats)
-	# ---- trim: bumper lips, the grille, mirrors, door handles
-	var tb := Buf.new()
-	var zf := _end_at(low, 0.4 + lift, true)
-	var zr := _end_at(low, 0.4 + lift, false)
-	_box(tb, Vector3(0, 0.32 + lift, zf - 0.07), Vector3((hw - 0.2) * 2.0, 0.1, 0.16))
-	_box(tb, Vector3(0, 0.32 + lift, zr + 0.07), Vector3((hw - 0.2) * 2.0, 0.1, 0.16))
-	var gy := 0.58 + lift
-	_box(tb, Vector3(0, gy, _end_at(low, gy, true) - 0.025), Vector3(0.72, 0.13, 0.06))
-	for sx: float in [-1.0, 1.0]:
-		for hz: float in ([c0.x - 0.42] if kind == "truck" else [c0.x - 0.42, float(pillars[0]) - 0.4]):
-			var hy := _span_at(low, hz).y - 0.11
-			_box(tb, Vector3(sx * (_plan_w(hz, hw, hl) + 0.004), hy, hz), Vector3(0.02, 0.035, 0.15))
-	cm.add_buf(tb, trim)
-	var mb := Buf.new()
-	for sx: float in [-1.0, 1.0]:
-		_box(mb, Vector3(sx * (hw + 0.07), c0.y + 0.08, c0.x - 0.14), Vector3(0.15, 0.1, 0.08))
-	cm.add_buf(mb, paint)
-	if not extras:
-		return cm
-	# ---- wiper arms at the windscreen's foot, a shark-fin aerial at the roof's back, roof
-	# rails on an SUV and an estate
-	var fit := Buf.new()
-	var ws := func(y: float) -> float:   # the windscreen's surface at height y
-		return lerpf(c0.x, c1.x, clampf((y - c0.y) / maxf(c1.y - c0.y, 0.01), 0.0, 1.0))
-	if kind != "truck":
-		for sx: float in [-1.0, 1.0]:
-			var wy := c0.y + 0.04
-			_box(fit, Vector3(sx * 0.27 - 0.08, wy, float(ws.call(wy)) + 0.02), Vector3(0.5, 0.018, 0.022))
-		if kind in ["sedan", "hatch", "mini", "wagon", "suv"]:
-			_box(fit, Vector3(0, c2.y + 0.04, c2.x + 0.28), Vector3(0.05, 0.07, 0.17))
-		if kind in ["suv", "wagon"]:
-			for sx: float in [-1.0, 1.0]:
-				_box(fit, Vector3(sx * (hw - 0.36), maxf(c1.y, c2.y) + 0.06, (c1.x + c2.x) * 0.5), Vector3(0.035, 0.035, absf(c1.x - c2.x) + 0.3))
-				for foot: float in [c1.x - 0.05, c2.x + 0.05]:
-					_box(fit, Vector3(sx * (hw - 0.36), maxf(c1.y, c2.y) + 0.03, foot), Vector3(0.05, 0.05, 0.08))
-	cm.add_buf(fit, trim)
-	if kind in ["sedan", "hatch", "mini", "wagon", "suv"]:
-		# a learner's roof sign, a new driver's in the back window, a parking permit on the
-		# windscreen: kept only on the cars the shader picks (vertex())
-		var top := maxf(c1.y, c2.y)
-		var lz := (c1.x + c2.x) * 0.5
-		var lb := Buf.new()
-		_box(lb, Vector3(0, top + 0.12, lz), Vector3(0.4, 0.22, 0.07))
-		cm.add_buf(lb, Color(_real_col("red"), 0.52), Vector2(0.0, top + 0.12))
-		var ry := lerpf(c3.y, c2.y, 0.32)
-		var rz := lerpf(c3.x, c2.x, 0.32) - 0.04
-		var nb := Buf.new()
-		_box(nb, Vector3(0.36, ry, rz), Vector3(0.27, 0.13, 0.01))
-		cm.add_buf(nb, Color(1, 1, 1, 0.54), Vector2(0.36, ry))
-		var py := c0.y + 0.09
-		var pb := Buf.new()
-		_box(pb, Vector3(-(hw - 0.42), py, float(ws.call(py)) + 0.025), Vector3(0.09, 0.07, 0.006))
-		cm.add_buf(pb, Color(1, 1, 1, 0.56), Vector2(-(hw - 0.42), py))
-	# ---- wheels: tyres, their sidewalls, five-spoke rims (just proud of the body, in the
-	# dark wells the shader paints round them)
-	var tyre := Color(_tone["tyre"], 0.3)
-	var rim := Color(_tone["rim"], 0.4)
-	for wzs: float in [wz, -wz]:
-		for sx: float in [-1.0, 1.0]:
-			# (UV2: the wheel's middle, which the shader turns the front ones about as it steers)
-			_wheel(cm, Vector3(sx * (hw - 0.09), wr, wzs), wr, sx, tyre, rim, 0.11, false, Vector2(sx * (hw - 0.09), wzs))
-	# ---- lights: panels laid on the body's front and back, following its rounded corners
-	# (UV2 x 1: drawn as a car's lamps, the indicators in them -- CAR_SHADER)
-	var hy := 0.68 + lift
-	var ty := _span_at(low, zmin + 0.12).y - 0.15
-	for sx: float in [-1.0, 1.0]:
-		_lamp(cm, low, hw, sx * (hw - 0.3), hy, 0.36, 0.12, true, Color(_tone["tank"], 0.1), Vector2(1, 0))
-		_lamp(cm, low, hw, sx * (hw - 0.27), ty, 0.32, 0.14, false, Color(_tone["tank"], 0.0), Vector2(1, 0))
-	# the indicators' repeaters on the door mirrors, and the third brake light at the top of
-	# the rear window (UV2 x 2)
-	var rb := Buf.new()
-	for sx: float in [-1.0, 1.0]:
-		_box(rb, Vector3(sx * (hw + 0.115), c0.y + 0.055, c0.x - 0.098), Vector3(0.05, 0.016, 0.006))
-	cm.add_buf(rb, Color(_tone["tank"], 0.1), Vector2(2, 0))
-	if kind != "truck":
-		var by := c2.y - 0.05
-		var bz := lerpf(c3.x, c2.x, clampf((by - 0.02 - c3.y) / maxf(c2.y - c3.y, 0.01), 0.0, 1.0)) - 0.015
-		var bb := Buf.new()
-		_box(bb, Vector3(0, by, bz), Vector3(0.34, 0.03, 0.012))
-		cm.add_buf(bb, Color(_tone["tank"], 0.0), Vector2(2, 0))
-	var plate := Color(Palette.col("warn") if String(_place.get("look", "")) == "med" else Palette.col("ink"), 0.65)
-	for front: bool in [true, false]:
-		var py := (0.45 if front else 0.6) + lift
-		var pz := _end_at(low, py, front) + (0.012 if front else -0.012)
-		var s := 1.0 if front else -1.0
-		var a := cm.vert(Vector3(-0.26 * s, py - 0.06, pz), Vector3(0, 0, s), plate, Vector2(0, 1))
-		var b := cm.vert(Vector3(0.26 * s, py - 0.06, pz), Vector3(0, 0, s), plate, Vector2(1, 1))
-		var d := cm.vert(Vector3(0.26 * s, py + 0.06, pz), Vector3(0, 0, s), plate, Vector2(1, 0))
-		var e := cm.vert(Vector3(-0.26 * s, py + 0.06, pz), Vector3(0, 0, s), plate, Vector2(0, 0))
-		cm.tri(a, b, d, Vector3(0, 0, s))
-		cm.tri(a, d, e, Vector3(0, 0, s))
-	return cm
-
-## a light panel w x h centred at (cx, cy) on the body's front (or back), each corner set on
-## the rounded surface (a hair proud of it), so it bends round the corner as real ones do
-func _lamp(cm: CarMesh, low: PackedVector2Array, hw: float, cx: float, cy: float, w: float, h: float, front: bool, col: Color,
-		t2 := Vector2.ZERO) -> void:
-	var s := 1.0 if front else -1.0
-	var grid: Array = []
-	# (2.5 cm proud of the body, five points across to follow its curve: at 8 mm and three
-	# points the body bulged through between them and the two fought for the pixels, the lamp
-	# a speckle of red on white -- worst on a phone's coarser depth buffer)
-	for row in range(2):
-		var y := cy + (float(row) - 0.5) * h
-		var line: Array = []
-		for k in range(5):
-			var x := cx + (float(k) - 2.0) * w * 0.25
-			var z := _end_at(low, y, front) - s * (_plan_in(x, hw) - 0.025)
-			var nrm := Vector3(x / hw * 0.7, 0.1, s).normalized()
-			# (UV for CAR_SHADER's lamps: x 0 at the inner end to 1 at the outer, y 0 low to 1 high)
-			var u := float(k) / 4.0 if cx > 0.0 else 1.0 - float(k) / 4.0
-			line.append(cm.vert(Vector3(x, y, z), nrm, col, Vector2(u, float(row)), t2))
-		grid.append(line)
-	var out := Vector3(cx / hw * 0.7, 0.1, s)
-	for k in range(4):
-		cm.tri(grid[0][k], grid[0][k + 1], grid[1][k + 1], out)
-		cm.tri(grid[0][k], grid[1][k + 1], grid[1][k], out)
-
-## a flat lamp w x h at c facing +Z (front) or -Z, with a car lamp's UV (x 0 inner to 1
-## outer, y 0 low to 1 high) and UV2 x 1: drawn as a car's lamps, indicators and all (a bus's,
-## a truck's box's)
-func _lamp_quad(cm: CarMesh, c: Vector3, w: float, h: float, front: bool, col: Color) -> void:
-	var s := 1.0 if front else -1.0
-	var out := Vector3(0, 0, s)
-	var q: Array = []
-	for corner: Vector2 in [Vector2(-0.5, -0.5), Vector2(0.5, -0.5), Vector2(0.5, 0.5), Vector2(-0.5, 0.5)]:
-		var u := 0.5 + corner.x * signf(c.x if c.x != 0.0 else 1.0)
-		q.append(cm.vert(c + Vector3(corner.x * w, corner.y * h, 0.0), out, col, Vector2(u, corner.y + 0.5), Vector2(1, 0)))
-	cm.tri(q[0], q[1], q[2], out)
-	cm.tri(q[0], q[2], q[3], out)
-
-## a tyre round the X axis at c, its outer side facing `side` (+1/-1): tread, sidewall, and the
-## rim (UV: the disc's own -1..1, for the shader's spokes)
-func _wheel(cm: CarMesh, c: Vector3, r: float, side: float, tyre: Color, rim: Color, half := 0.11,
-		both := false, t2 := Vector2.ZERO) -> void:
-	var seg := 10
-	var rr := r * 0.62
-	var out := Vector3(side, 0, 0)
-	var tread: Array = []
-	for k in range(seg + 1):
-		var a := TAU * k / seg
-		var dir := Vector3(0, cos(a), sin(a))
-		tread.append([cm.vert(c + dir * r - out * half, dir, tyre, Vector2.ZERO, t2), cm.vert(c + dir * r + out * half, dir, tyre, Vector2.ZERO, t2),
-			cm.vert(c + dir * r + out * half, out, tyre, Vector2.ZERO, t2), cm.vert(c + dir * rr + out * half, out, tyre, Vector2.ZERO, t2)])
-	for k in range(seg):
-		var a0: Array = tread[k]
-		var a1: Array = tread[k + 1]
-		var dir := Vector3(0, cos(TAU * (k + 0.5) / seg), sin(TAU * (k + 0.5) / seg))
-		cm.tri(a0[0], a1[0], a1[1], dir)
-		cm.tri(a0[0], a1[1], a0[1], dir)
-		cm.tri(a0[2], a1[2], a1[3], out)
-		cm.tri(a0[2], a1[3], a0[3], out)
-	for o: Vector3 in ([out, -out] if both else [out]):
-		var hub := cm.vert(c + o * (half - 0.004), o, rim, Vector2.ZERO, t2)
-		var ring: Array = []
-		for k in range(seg + 1):
-			var a := TAU * k / seg
-			ring.append(cm.vert(c + Vector3(0, cos(a), sin(a)) * rr + o * (half - 0.004), o, rim, Vector2(cos(a), sin(a)), t2))
-		for k in range(seg):
-			cm.tri(hub, ring[k], ring[k + 1], o)
-		if both and o == -out:   # the far side's sidewall too (a scooter is seen from both)
-			for k in range(seg):
-				var a0 := TAU * k / seg
-				var a1 := TAU * (k + 1) / seg
-				var p0 := cm.vert(c + Vector3(0, cos(a0), sin(a0)) * r + o * half, o, tyre)
-				var p1 := cm.vert(c + Vector3(0, cos(a1), sin(a1)) * r + o * half, o, tyre)
-				var q0 := cm.vert(c + Vector3(0, cos(a0), sin(a0)) * rr + o * half, o, tyre)
-				var q1 := cm.vert(c + Vector3(0, cos(a1), sin(a1)) * rr + o * half, o, tyre)
-				cm.tri(p0, p1, q1, o)
-				cm.tri(p0, q1, q0, o)
-
-## parts [Buf, colour with the part code in alpha] as one surface in the car shader
-func _car_parts_mesh(parts: Array) -> ArrayMesh:
-	var one := Buf.new()
-	for pair: Array in parts:
-		var b: Buf = pair[0]
-		one.v.append_array(b.v)
-		one.n.append_array(b.n)
-		one.uv.append_array(b.uv)
-		one.uv2.append_array(b.uv2)
-		for _i in range(b.v.size()):
-			one.c.append(pair[1])
-	var am := ArrayMesh.new()
-	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, one.arrays())
-	am.surface_set_material(0, _car_material())
-	return am
-
-## A city bus, 11.8 m: a rounded box -- the body in its colour below and above a band of
-## windows all round, pillars between them, a big windscreen with the lit route sign over
-## it, glazed doors on the kerb side (the car's -X), the air-conditioning box on the roof,
-## the wheels in dark wells. One loft like the cars' (see _car_body), its ends flat faces
-## in bands. Faces +Z.
-func _bus_mesh() -> ArrayMesh:
-	var cm := CarMesh.new()
-	var hw := 1.25
-	var hl := 5.9
-	var rc := 0.3                       # the plan's corner radius
-	var paint := Color(1, 1, 1, 1.0)
-	var glass := Color(_tone["carglass"], 0.75)
-	var trim := Color(_tone["cartrim"], 0.5)
-	var wheels := Vector2(3.0, 0.5)     # (both axles' |z|, wheel radius): the wells
-	var ys: Array = [0.32, 0.42, 1.0, 2.55, 2.9, 3.05]   # bottom, sill, window foot, top, roof edge, roof
-	var pillars: Array = []
-	for i in range(9):
-		pillars.append(-hl + 0.7 + i * 1.32)
-	var doors: Array = [Vector2(3.65, 4.85), Vector2(-0.9, 0.35)]
-	var zs: Array = []
-	for d: float in [0.0, 0.04, 0.1, 0.18, 0.3]:
-		zs.append_array([-hl + d, hl - d])
-	for pz: float in pillars:
-		zs.append_array([pz - 0.06, pz + 0.06])
-	for dz: Vector2 in doors:
-		zs.append_array([dz.x, dz.y])
-	zs.append_array([-hl + 0.6, hl - 0.6])
-	zs.sort()
-	var st: Array = []
-	for z: float in zs:
-		if st.is_empty() or z - float(st[-1]) > 0.01:
-			st.append(z)
-	var rings: Array = []
-	var mids := PackedVector3Array()
-	for z: float in st:
-		var d := absf(z) - (hl - rc)
-		var w := hw if d <= 0.0 else hw - rc + sqrt(maxf(rc * rc - d * d, 0.0))
-		var half: Array = [Vector2(0.0, ys[0]), Vector2(w - 0.08, ys[0]), Vector2(w, ys[1]), Vector2(w, ys[2]),
-			Vector2(w, ys[3]), Vector2(w, ys[4]), Vector2(w - 0.15, ys[5]), Vector2(0.0, float(ys[5]) + 0.02)]
-		var ring := PackedVector3Array()
-		for p: Vector2 in half:
-			ring.append(Vector3(p.x, p.y, z))
-		for k in range(half.size() - 2, 0, -1):
-			ring.append(Vector3(-(half[k] as Vector2).x, (half[k] as Vector2).y, z))
-		rings.append(ring)
-		mids.append(Vector3(0.0, 1.6, z))
-	var part := func(i: int, j: int) -> Color:
-		var zc := (float(st[i]) + float(st[i + 1])) * 0.5
-		var kerb := j >= 7
-		var band := j if j < 7 else 13 - j   # the same band on either side
-		for dz: Vector2 in doors:
-			if kerb and zc > dz.x and zc < dz.y and (band == 2 or band == 3):
-				return glass                  # the doors, glazed top to bottom
-		if band == 3:
-			if absf(zc) > hl - 0.45:
-				return paint                  # the corners
-			for pz: float in pillars:
-				if absf(zc - pz) < 0.06:
-					return paint
-			return glass
-		return trim if band <= 1 else paint
-	_loft(cm, rings, mids, true, part, wheels)
-	# the two ends: flat faces in bands -- bumper, panel, windscreen (rear window), route sign
-	for front: bool in [true, false]:
-		var z := hl if front else -hl
-		var s := 1.0 if front else -1.0
-		var w := hw - rc
-		var bands: Array = [[ys[0], ys[1], trim], [ys[1], ys[2], paint], [ys[2], ys[3], glass],
-			[ys[3], ys[4], Color(Palette.col("warn"), 0.1) if front else paint], [ys[4], ys[5], paint]]
-		for b: Array in bands:
-			var y0: float = b[0]
-			var y1: float = b[1]
-			var w0 := w - (0.08 if y0 <= float(ys[0]) else 0.0)
-			var w1 := w - (0.15 if y1 >= float(ys[5]) else 0.0)
-			var a := cm.vert(Vector3(-w0, y0, z), Vector3(0, 0, s), b[2])
-			var bb := cm.vert(Vector3(w0, y0, z), Vector3(0, 0, s), b[2])
-			var c := cm.vert(Vector3(w1, y1, z), Vector3(0, 0, s), b[2])
-			var e := cm.vert(Vector3(-w1, y1, z), Vector3(0, 0, s), b[2])
-			cm.tri(a, bb, c, Vector3(0, 0, s))
-			cm.tri(a, c, e, Vector3(0, 0, s))
-	# the roof's air conditioning, the mirrors on their arms
-	var tb := Buf.new()
-	_box(tb, Vector3(0, 3.2, -1.2), Vector3(1.6, 0.26, 2.8))
-	for sx: float in [-1.0, 1.0]:
-		_box(tb, Vector3(sx * (hw + 0.12), 2.15, hl - 0.25), Vector3(0.06, 0.4, 0.1))
-	cm.add_buf(tb, trim)
-	# lights low on the front, tall ones at the back (a car's lamps: the indicators in them),
-	# a repeater on each side behind the front door
-	var lamps := Buf.new()
-	var tails := Buf.new()
-	var reps := Buf.new()
-	for sx: float in [-1.0, 1.0]:
-		_box(lamps, Vector3(sx * (hw - 0.45), 0.62, hl + 0.004), Vector3(0.36, 0.14, 0.01))
-		_box(tails, Vector3(sx * (hw - 0.22), 1.0, -hl - 0.004), Vector3(0.2, 0.42, 0.01))
-		_lamp_quad(cm, Vector3(sx * (hw - 0.45), 0.62, hl + 0.012), 0.36, 0.14, true, Color(_tone["tank"], 0.1))
-		_lamp_quad(cm, Vector3(sx * (hw - 0.22), 1.0, -hl - 0.012), 0.2, 0.42, false, Color(_tone["tank"], 0.0))
-		_box(reps, Vector3(sx * (hw + 0.012), 1.0, hl - 2.2), Vector3(0.02, 0.07, 0.16))
-	cm.add_buf(lamps, Color(_tone["cartrim"], 0.5))
-	cm.add_buf(tails, Color(_tone["cartrim"], 0.5))
-	cm.add_buf(reps, Color(_tone["tank"], 0.1), Vector2(2, 0))
-	for wz: float in [wheels.x, -wheels.x]:
-		for sx: float in [-1.0, 1.0]:
-			_wheel(cm, Vector3(sx * (hw - 0.2), wheels.y, wz), wheels.y, sx, Color(_tone["tyre"], 0.3), Color(_tone["rim"], 0.4), 0.16)
-	var am := cm.mesh(_car_material())
-	am.custom_aabb = am.get_aabb().grow(0.1)
-	_car_meshes["bus"] = am
-	return am
-
-## A scooter and its rider, 1.9 m, made of rounded pieces: two small spoked wheels, the
-## body and the leg shield in its colour, a dark seat and floorboard, the handlebars, a lamp
-## at each end; the rider in a dark jacket and trousers, arms out to the bars, a helmet
-## with its visor. Faces +Z. Without `rider`: one parked on the pavement.
-func _moto_mesh(rider := true) -> ArrayMesh:
-	var cm := CarMesh.new()
-	var paint := Color(1, 1, 1, 1.0)
-	var trim := Color(_tone["cartrim"], 0.5)
-	var jacket := Color(_tone["cartrim"].lerp(_tone["carglass"], 0.3), 0.5)
-	var legs := Color(_tone["cartrim"].darkened(0.2), 0.5)
-	var helmet := Color(_tone["mark"], 0.5)
-	for wz: float in [0.62, -0.62]:
-		_wheel(cm, Vector3(0, 0.25, wz), 0.25, 1.0, Color(_tone["tyre"], 0.3), Color(_tone["rim"], 0.4), 0.05, true)
-	_blobm(cm, Vector3(0, 0.55, -0.32), Vector3(0.2, 0.2, 0.5), paint)            # the body over the back wheel
-	_blobm(cm, Vector3(0, 0.62, 0.42), Vector3(0.22, 0.32, 0.07), paint)          # the leg shield
-	_blobm(cm, Vector3(0, 0.44, 0.63), Vector3(0.08, 0.05, 0.2), paint)           # the front mudguard
-	_blobm(cm, Vector3(0, 0.77, -0.3), Vector3(0.16, 0.06, 0.38), trim)           # the seat
-	var tb := Buf.new()
-	_box(tb, Vector3(0, 0.36, 0.08), Vector3(0.32, 0.06, 0.52))                   # the floorboard
-	_box(tb, Vector3(0, 0.86, 0.5), Vector3(0.05, 0.46, 0.05))                    # the column
-	_box(tb, Vector3(0, 1.08, 0.48), Vector3(0.62, 0.04, 0.04))                   # the bars
-	cm.add_buf(tb, trim)
-	_blobm(cm, Vector3(0, 0.98, 0.57), Vector3(0.07, 0.06, 0.03), Color(_tone["tank"], 0.1), 8, 4)
-	_blobm(cm, Vector3(0, 0.62, -0.84), Vector3(0.07, 0.04, 0.03), Color(_tone["tank"], 0.0), 8, 4)
-	# indicators either side, front and back (CAR_SHADER's repeaters: amber, lit as it blinks)
-	var ib := Buf.new()
-	for sx: float in [-1.0, 1.0]:
-		_box(ib, Vector3(sx * 0.17, 0.95, 0.56), Vector3(0.05, 0.035, 0.035))
-		_box(ib, Vector3(sx * 0.13, 0.64, -0.82), Vector3(0.05, 0.035, 0.035))
-	cm.add_buf(ib, Color(_tone["tank"], 0.1), Vector2(2, 0))
-	# the rider, leaning a little to the bars: a torso, arms bent at the elbow, knees up
-	if rider:
-		_moto_rider(cm, jacket, legs, helmet)
-	var am := cm.mesh(_car_material())
-	am.custom_aabb = am.get_aabb().grow(0.1)
-	_car_meshes["moto" if rider else "moto_parked"] = am
-	return am
-
-func _moto_rider(cm: CarMesh, jacket: Color, legs: Color, helmet: Color) -> void:
-	_limb(cm, Vector3(0, 0.98, -0.22), Vector3(0, 1.5, -0.06), 0.16, jacket)
-	for sx: float in [-1.0, 1.0]:
-		var shoulder := Vector3(sx * 0.18, 1.42, -0.07)
-		var elbow := Vector3(sx * 0.26, 1.2, 0.17)
-		var hand := Vector3(sx * 0.3, 1.1, 0.45)
-		_limb(cm, shoulder, elbow, 0.06, jacket)
-		_limb(cm, elbow, hand, 0.05, jacket)
-		var hip := Vector3(sx * 0.11, 0.9, -0.2)
-		var knee := Vector3(sx * 0.15, 0.93, 0.2)
-		var foot := Vector3(sx * 0.14, 0.42, 0.2)
-		_limb(cm, hip, knee, 0.08, legs)
-		_limb(cm, knee, foot, 0.065, legs)
-	_blobm(cm, Vector3(0, 1.66, 0.0), Vector3(0.13, 0.14, 0.14), helmet)          # the helmet
-	_blobm(cm, Vector3(0, 1.64, 0.1), Vector3(0.1, 0.055, 0.06), Color(_tone["carglass"], 0.75), 8, 4)   # its visor
-
-## A delivery truck, 6.8 m: a van's cab (CAR_SHAPES "truck", built like the cars) with a
-## tall white box behind it, its back doors' seam and hinges. Faces +Z.
-func _truck_mesh() -> ArrayMesh:
-	var cm := _car_body("truck", true)
-	var box := Buf.new()
-	_box(box, Vector3(0, 2.13, -0.98), Vector3(2.3, 2.36, 4.8))
-	cm.add_buf(box, Color(_tone["tank"], 0.5))
-	var seam := Buf.new()
-	_box(seam, Vector3(0, 2.13, -3.385), Vector3(0.03, 2.2, 0.02))
-	for sx: float in [-1.0, 1.0]:
-		for hy: float in [1.3, 2.9]:
-			_box(seam, Vector3(sx * 1.05, hy, -3.385), Vector3(0.1, 0.06, 0.02))
-	cm.add_buf(seam, Color(_tone["cartrim"], 0.5))
-	# its tail lights on the box's back (the cab's own are behind the box), a car's lamps
-	for sx: float in [-1.0, 1.0]:
-		_lamp_quad(cm, Vector3(sx * 0.9, 0.82, -3.4), 0.34, 0.16, false, Color(_tone["tank"], 0.0))
-	var am := cm.mesh(_car_material())
-	am.custom_aabb = am.get_aabb().grow(0.1)
-	_car_meshes["truck"] = am
-	return am
-
-## a limb from a to b: a long rounded piece, `rad` thick
-func _limb(cm: CarMesh, a: Vector3, b: Vector3, rad: float, col: Color) -> void:
-	var up := (b - a).normalized()
-	var side := up.cross(Vector3.FORWARD if absf(up.z) < 0.9 else Vector3.RIGHT).normalized()
-	var fwd := side.cross(up)
-	_blobm(cm, (a + b) * 0.5, Vector3(rad, a.distance_to(b) * 0.5 + rad * 0.6, rad), col, 8, 5, Basis(side, up, fwd))
-
-## a rounded blob (an ellipsoid at c with radii r, turned by `turn`), smooth, in one colour
-func _blobm(cm: CarMesh, c: Vector3, r: Vector3, col: Color, seg := 10, rings := 6, turn := Basis()) -> void:
-	var first := cm.v.size()
-	for i in range(rings + 1):
-		var th := PI * i / rings
-		for j in range(seg + 1):
-			var ph := TAU * j / seg
-			var u := Vector3(sin(th) * cos(ph), cos(th), sin(th) * sin(ph))
-			cm.vert(c + turn * (u * r), (turn * (u / r)).normalized(), col)
-	for i in range(rings):
-		for j in range(seg):
-			var a := first + i * (seg + 1) + j
-			var b := a + seg + 1
-			var out: Vector3 = (cm.v[a] + cm.v[b + 1]) * 0.5 - c
-			cm.tri(a, b, b + 1, out)
-			cm.tri(a, b + 1, a + 1, out)
-
-## a low cylinder lying along x (a wheel)
-func _cyl_x(buf: Buf, c: Vector3, r: float, w: float, seg: int) -> void:
-	for i in range(seg):
-		var a0 := TAU * i / seg
-		var a1 := TAU * (i + 1) / seg
-		var p0 := Vector3(0, cos(a0) * r, sin(a0) * r)
-		var p1 := Vector3(0, cos(a1) * r, sin(a1) * r)
-		var hx := Vector3(w * 0.5, 0, 0)
-		var nrm := Vector3(0, cos((a0 + a1) * 0.5), sin((a0 + a1) * 0.5))
-		buf.tri(c + p0 - hx, c + p1 - hx, c + p1 + hx, nrm, Color.WHITE)
-		buf.tri(c + p0 - hx, c + p1 + hx, c + p0 + hx, nrm, Color.WHITE)
-		buf.tri(c - hx, c + p0 - hx, c + p1 - hx, Vector3.LEFT, Color.WHITE)
-		buf.tri(c + hx, c + p0 + hx, c + p1 + hx, Vector3.RIGHT, Color.WHITE)
-
-## a palm's crown: nine drooping fronds, one mesh
-## many copies of one mesh, one MultiMeshInstance3D per square so far ones are not drawn,
-## each drawn while the camera is within `range_end` of it. A multimesh is drawn whole or
-## not at all, judged by the middle of its box, so the squares are sized to the range:
-## 400 m squares for things seen 160 m off drew every parked car in a whole square, and
-## none at all from near a corner of one. Optional per-copy colours. Shadows only where
-## asked: the shadow map draws every caster again.
 ## ---- batching: the small things merged ---------------------------------------------------
 ## A street has dozens of kinds of small things -- sign plates and poles, lamp posts, power
 ## poles, racks, benches, balconies -- and as a multimesh each, every kind cost a draw call
@@ -12208,7 +10760,7 @@ func _tex(file: String) -> Texture2D:
 
 ## the photo textures on or off in every shader that has them (off at the lowest web level)
 func _set_textured(on: bool) -> void:
-	for m: ShaderMaterial in [_tone_material, _wall_mat, _ground_shader_mat, _kerb_mat, _roof_mat]:
+	for m: ShaderMaterial in [_tone_material, _wall_mat, _ground._ground_shader_mat, _kerb_mat, _roof_mat]:
 		if m != null:
 			m.set_shader_parameter("textured", 1.0 if on else 0.0)
 
@@ -12519,6 +11071,12 @@ func _chunked_paced(mesh: Mesh, xforms: Array, range_end: float, colours: Array 
 		_batch_add(mesh, xforms.slice(i, i + 200), range_end, colours.slice(i, i + 200) if not colours.is_empty() else [],
 			m, shadows)
 
+## many copies of one mesh, one MultiMeshInstance3D per square so far ones are not drawn,
+## each drawn while the camera is within `range_end` of it. A multimesh is drawn whole or
+## not at all, judged by the middle of its box, so the squares are sized to the range:
+## 400 m squares for things seen 160 m off drew every parked car in a whole square, and
+## none at all from near a corner of one. Optional per-copy colours. Shadows only where
+## asked: the shadow map draws every caster again.
 func _chunked(mesh: Mesh, xforms: Array, range_end: float, colours: Array = [], m: Material = null, shadows := false,
 		custom := false, cell_m := 0.0, range_begin := 0.0) -> void:
 	if xforms.is_empty():
@@ -13847,7 +12405,7 @@ func _shop_interior() -> ShaderMaterial:
 	_shop_mat.set_shader_parameter("goods_b", _real_col("yellow"))
 	_shop_mat.set_shader_parameter("goods_c", _real_col("green"))
 	_shop_mat.set_shader_parameter("goods_d", _real_col("blue"))
-	_shop_mat.set_shader_parameter("sky_col", (_sky_reflect()[1] as Color) if env != null and env.sky != null else Palette.col("bg_alt"))
+	_shop_mat.set_shader_parameter("sky_col", (_skydome._sky_reflect()[1] as Color) if env != null and env.sky != null else Palette.col("bg_alt"))
 	_shop_mat.set_shader_parameter("lit", 1.4 if _night else 0.45)
 	return _shop_mat
 
@@ -14236,10 +12794,10 @@ func _far_set(m: ShaderMaterial) -> void:
 	m.set_shader_parameter("fs_dark", 0.0 if _night or _fs_tex == null else (FS_DARK_EVE if _evening else FS_DARK))
 	m.set_shader_parameter("wet", _wet_k)
 	if env != null:
-		var rs := _sky_reflect()
+		var rs := _skydome._sky_reflect()
 		m.set_shader_parameter("wet_sky_top", rs[0])
 		m.set_shader_parameter("wet_sky_hor", rs[1])
-	if m == _ao_mat:   # the trees' patches: where this sun throws them
+	if m == _ao_kit._ao_mat:   # the trees' patches: where this sun throws them
 		var L := -sun.global_transform.basis.z if sun.is_inside_tree() else Vector3(0, -1, 0)
 		var off := Vector2(L.x, L.z) / maxf(-L.y, 0.05)
 		m.set_shader_parameter("sun_off", off)
@@ -14248,7 +12806,7 @@ func _far_set(m: ShaderMaterial) -> void:
 func _far_update() -> void:
 	for m: ShaderMaterial in _far_mats:
 		_far_set(m)
-	_grass_retint()   # (the grass reads the same picture's green)
+	_grass_kit._grass_retint()   # (the grass reads the same picture's green)
 
 func _build_far_shadows(chunked := false, for_sun := "") -> void:
 	if DisplayServer.get_name() == "headless":
@@ -14256,7 +12814,7 @@ func _build_far_shadows(chunked := false, for_sun := "") -> void:
 	# the sun drawn for: this one, or the other ahead of its button ("day" / "evening") -- and
 	# kept as it was asked, the button may change the sun before the picture is done
 	var ev := _evening if for_sun == "" else for_sun == "evening"
-	var L := -Basis.from_euler(Vector3(SKIES["evening" if ev else "day"]["sun"]) * (PI / 180.0)).z   # the way the sunlight goes
+	var L := -Basis.from_euler(Vector3(SkyDome.SKIES["evening" if ev else "day"]["sun"]) * (PI / 180.0)).z   # the way the sunlight goes
 	if _city_data.is_empty() or not _city_data.has("buildings"):
 		return   # (the city file let go: both suns were drawn before that, _far_both)
 	if chunked:
@@ -14395,143 +12953,9 @@ func _build_far_shadows(chunked := false, for_sun := "") -> void:
 	_stage_ms["far shadows: work, not the frames"] = (t1 - t0 + Time.get_ticks_usec() - t2) / 1000
 
 ## ---- grass blades near the camera --------------------------------------------------------
-## A lawn drawn flat looked like a green carpet from a walker's height. Blades on every lawn
-## would be millions of triangles; instead one patch of them (4 x 4 m, GRASS_BLADES) repeated
-## in a grid that moves with the camera, a square at a time, and the shader grows each blade
-## only where grass grows -- the far-shadow picture's green (_build_far_shadows) -- at the
-## ground's height there (the height grid as a texture, interpolated as _h does), shorter
-## further off and gone by GRASS_REACH. Off at the lowest two qualities; a smaller grid at 2.
-const GRASS_SHADER := """
-shader_type spatial;
-render_mode cull_disabled;
-uniform sampler2D mask : filter_linear, repeat_disable;   // green: where grass grows
-uniform vec4 mask_rect = vec4(0.0);
-uniform sampler2D hmap : filter_nearest, repeat_disable;  // the ground's height grid
-uniform vec4 h_info = vec4(0.0, 0.0, 1.0, 0.0);           // its corner (x, z), its step, 1 if hilly
-uniform ivec2 h_size = ivec2(1, 1);
-uniform vec3 col_a : source_color = vec3(0.3, 0.5, 0.2);   // the lawn
-uniform vec3 col_b : source_color = vec3(0.5, 0.5, 0.25);  // drier blades among it
-uniform float greenness = 0.5;
-uniform float reach = 18.0;
-uniform int cut_n = 0;           // the garden paths near the camera (_grass_cuts): no blades on them
-uniform vec4 cut_a[24];          // each one's middle (x, z) and its way along (x, z)
-uniform vec2 cut_b[24];          // ... its half length and half width
-varying float tip;
-varying vec3 tint;
-float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
-float noise(vec2 p) {
-	vec2 i = floor(p);
-	vec2 f = fract(p);
-	vec2 u = f * f * (3.0 - 2.0 * f);
-	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
-}
-float ground(vec2 p) {   // as the game's _h: the grid's triangles
-	if (h_info.w < 0.5) { return 0.0; }
-	float fx = clamp((p.x - h_info.x) / h_info.z, 0.0, float(h_size.x) - 1.001);
-	float fz = clamp((p.y - h_info.y) / h_info.z, 0.0, float(h_size.y) - 1.001);
-	int i = int(fx);
-	int j = int(fz);
-	float ax = fx - float(i);
-	float az = fz - float(j);
-	float h00 = texelFetch(hmap, ivec2(i, j), 0).r;
-	float h10 = texelFetch(hmap, ivec2(i + 1, j), 0).r;
-	float h01 = texelFetch(hmap, ivec2(i, j + 1), 0).r;
-	float h11 = texelFetch(hmap, ivec2(i + 1, j + 1), 0).r;
-	if (ax + az <= 1.0) { return h00 + (h10 - h00) * ax + (h01 - h00) * az; }
-	return h11 + (h01 - h11) * (1.0 - ax) + (h10 - h11) * (1.0 - az);
-}
-void vertex() {
-	// a blade's three corners all sit at its root (VERTEX); UV says which corner (x across,
-	// y up), UV2 is the blade's own two random numbers
-	vec3 root = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	vec2 p = root.xz;
-	float gy = ground(p) + (h_info.w > 0.5 ? 0.07 : 0.0) + 0.015;
-	float d = distance(vec3(p.x, gy, p.y), CAMERA_POSITION_WORLD);   // (from up high: none)
-	float m = textureLod(mask, (p - mask_rect.xy) * mask_rect.zw, 0.0).g;
-	float n = noise(p / 70.0) * 0.65 + noise(p / 15.0) * 0.35;
-	float wild = smoothstep(0.62 - greenness * 0.45, 0.78 - greenness * 0.4, n);
-	float grow = m > 0.75 ? 1.0 : (m > 0.25 ? wild * 0.85 : 0.0);
-	grow *= 1.0 - smoothstep(reach * 0.6, reach, d);
-	for (int i = 0; i < cut_n; i++) {
-		vec2 r = p - cut_a[i].xy;
-		if (abs(dot(r, cut_a[i].zw)) < cut_b[i].x && abs(dot(r, vec2(-cut_a[i].w, cut_a[i].z))) < cut_b[i].y) {
-			grow = 0.0;
-		}
-	}
-	float h = (0.06 + 0.1 * UV2.x) * grow;
-	float a = UV2.y * 6.2831853;
-	vec3 side = vec3(cos(a), 0.0, sin(a));
-	vec3 lean = vec3(-sin(a), 0.0, cos(a)) * (0.2 + 0.35 * UV2.x);
-	float sway = sin(TIME * 1.7 + p.x * 0.31 + p.y * 0.23) * 0.15 + sin(TIME * 3.1 + p.x * 1.3) * 0.05;
-	vec3 w = vec3(p.x, gy, p.y);
-	if (h > 0.004) {
-		w += side * UV.x * (0.011 + 0.007 * UV2.y) * (1.0 - UV.y)
-			+ (vec3(0.0, 1.0, 0.0) + lean + vec3(sway, 0.0, sway * 0.6)) * UV.y * h;
-	}
-	VERTEX = w - MODEL_MATRIX[3].xyz;   // (the grid moves, it does not turn)
-	NORMAL = vec3(0.0, 1.0, 0.0);
-	tip = UV.y;
-	tint = mix(col_a, col_b, step(0.82, fract(UV2.x * 7.3)) * 0.7 + (1.0 - clamp(m * 2.0 - 1.0, 0.0, 1.0)) * 0.25);
-}
-void fragment() {
-	// (a blade's base as dark as the lawn under it read as black spikes: barely darker, and
-	// the tips lighter than the lawn, as sunlit blades are)
-	ALBEDO = tint * mix(0.9, 1.35, tip);
-	if (!FRONT_FACING) { NORMAL = -NORMAL; }   // (double-sided: seen from behind, the renderer turned it to the ground, and the blade went black)
-	ROUGHNESS = 0.9;
-	SPECULAR = 0.2;
-}
-"""
-const GRASS_PATCH := 4.0             ## metres a patch of blades covers
-const GRASS_BLADES := 520            ## blades a patch (about 32 a square metre)
-const GRASS_REACH := 18.0            ## metres from the camera blades grow to
-var _grass: MultiMeshInstance3D
-var _grass_mat: ShaderMaterial
-
-func _build_grass() -> void:
-	if _fs_tex == null and (not _far_later or DisplayServer.get_name() == "headless"):
-		return   # (no picture of where grass grows: a headless run)
-	var b := Buf.new()
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 77
-	for i in range(GRASS_BLADES):
-		var at := Vector3(rng.randf() * GRASS_PATCH, 0, rng.randf() * GRASS_PATCH)
-		var u2 := Vector2(rng.randf(), rng.randf())
-		b.tri(at, at, at, Vector3.UP, Color.WHITE, Vector2(-1, 0), Vector2(1, 0), Vector2(0, 1), u2)
-	var am := ArrayMesh.new()
-	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, b.arrays())
-	_grass_mat = ShaderMaterial.new()
-	var sh := Shader.new()
-	sh.code = GRASS_SHADER
-	_grass_mat.shader = sh
-	am.surface_set_material(0, _grass_mat)
-	if _hnx > 0:
-		_set_hmap(_grass_mat)
-	_grass_mat.set_shader_parameter("reach", GRASS_REACH)
-	_grass_mat.set_shader_parameter("greenness", 0.85 if String(_place.get("look", "")) == "north" else 0.35)
-	# the grid round the camera, nearest patches first (a smaller grid shows only the first)
-	var k := int(ceil(GRASS_REACH / GRASS_PATCH)) + 1
-	var cells: Array = []
-	for j in range(-k, k):
-		for i in range(-k, k):
-			cells.append(Vector2i(i, j))
-	cells.sort_custom(func(a: Vector2i, c: Vector2i) -> bool:
-		return Vector2(a.x + 0.5, a.y + 0.5).length() < Vector2(c.x + 0.5, c.y + 0.5).length())
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.mesh = am
-	mm.instance_count = cells.size()
-	for n in range(cells.size()):
-		var c: Vector2i = cells[n]
-		mm.set_instance_transform(n, Transform3D(Basis(), Vector3(c.x * GRASS_PATCH, 0, c.y * GRASS_PATCH)))
-	mm.custom_aabb = AABB(Vector3(-k * GRASS_PATCH, -600, -k * GRASS_PATCH), Vector3(2 * k * GRASS_PATCH, 1800, 2 * k * GRASS_PATCH))
-	_grass = MultiMeshInstance3D.new()
-	_grass.multimesh = mm
-	_grass.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	world.add_child(_grass)
-	_grass_retint()
-	_grass_quality()
-
+## In `grass.gd` (`Grass`, made once: `_grass_kit`).
+const Grass := preload("res://game/streets/grass.gd")
+var _grass_kit := Grass.new(self)
 ## where grass grows, before the far shadows' picture says (or while another sun's is drawn):
 ## nowhere -- an unset mask reads white, grass everywhere
 var _fs_none: ImageTexture
@@ -14539,67 +12963,6 @@ func _fs_blank() -> ImageTexture:
 	if _fs_none == null:
 		_fs_none = ImageTexture.create_from_image(Image.create(1, 1, false, Image.FORMAT_RG8))
 	return _fs_none
-
-func _grass_retint() -> void:
-	if _grass_mat == null:
-		return
-	_grass_mat.set_shader_parameter("mask", _fs_tex if _fs_tex != null else _fs_blank())
-	_grass_mat.set_shader_parameter("mask_rect", _fs_rect)
-	var gr: Color = _tone["grass"]
-	_grass_mat.set_shader_parameter("col_a", gr)
-	_grass_mat.set_shader_parameter("col_b", gr.lerp(_tone.get("sand", gr), 0.45))
-
-## how many of the patches show: all at the top quality, the nearer ones at 2, none below
-func _grass_quality() -> void:
-	if _grass == null:
-		return
-	_grass.visible = _quality >= 2
-	var all := _grass.multimesh.instance_count
-	_grass.multimesh.visible_instance_count = all if _quality >= 3 else int(all * 0.55)
-
-## the grid under the camera, a patch at a time (each frame, with the sky)
-func _grass_follow() -> void:
-	if _grass == null or not _grass.visible:
-		return
-	var c := cam.global_position
-	var at := Vector3(floorf(c.x / GRASS_PATCH) * GRASS_PATCH, 0, floorf(c.z / GRASS_PATCH) * GRASS_PATCH)
-	if at != _grass.position:
-		_grass.position = at
-		_grass_cuts_near(Vector2(c.x, c.z))
-
-## The front gardens' paths across their lawns, to keep the blades off (grass poked up
-## through the slabs). The picture of where grass grows is a metre or two a pixel and drawn
-## before most gardens are laid, so it cannot hold a 1.3 m path; the shader is handed the
-## ones near the camera instead, as the grid moves (24 at most: about a street's worth).
-var _cut_c := PackedVector2Array()    ## a path's middle
-var _cut_u := PackedVector2Array()    ## its way along (unit)
-var _cut_s := PackedVector2Array()    ## its half length, half width
-var _cut_hash := {}
-
-func _grass_cut(c: Vector2, u: Vector2, half_len: float, half_w: float) -> void:
-	var i := _cut_c.size()
-	_cut_c.append(c)
-	_cut_u.append(u)
-	_cut_s.append(Vector2(half_len, half_w))
-	_hash_add(_cut_hash, Rect2(c, Vector2.ZERO).grow(half_len + half_w), BLD_CELL, i)
-
-func _grass_cuts_near(c: Vector2) -> void:
-	if _grass_mat == null:
-		return
-	var near: Array = _near(_cut_hash, c, GRASS_REACH + 2.0, BLD_CELL).duplicate()   # (one cell: the hash's own array)
-	near.sort_custom(func(a: int, b: int) -> bool: return _cut_c[a].distance_squared_to(c) < _cut_c[b].distance_squared_to(c))
-	var a: Array = []
-	var b: Array = []
-	for i: int in near.slice(0, 24):
-		a.append(Vector4(_cut_c[i].x, _cut_c[i].y, _cut_u[i].x, _cut_u[i].y))
-		b.append(_cut_s[i])
-	while a.size() < 24:
-		a.append(Vector4.ZERO)
-		b.append(Vector2.ZERO)
-	_grass_mat.set_shader_parameter("cut_a", a)
-	_grass_mat.set_shader_parameter("cut_b", b)
-	_grass_mat.set_shader_parameter("cut_n", mini(near.size(), 24))
-
 ## an outline filled on a canvas item, in one colour (skipped if it will not triangulate)
 func _canvas_ring(item: RID, ring: PackedVector2Array, col: Color) -> void:
 	var tri := Geometry2D.triangulate_polygon(ring)
@@ -14614,7 +12977,7 @@ func _canvas_ring(item: RID, ring: PackedVector2Array, col: Color) -> void:
 ## laid round the foot of its trunk; AO_SHADER moves it out along the sun's way and draws it
 ## out, so it follows the sun (day or evening) without being laid again
 func _ao_tree(p: Vector2, r: float, y: float) -> void:
-	if _ao == null:
+	if _ao_kit._ao == null:
 		return
 	var col := Color(0.8, clampf(y / 40.0, 0.0, 1.0), 1.0)
 	var mid := _g3(p, KERB_H + 0.03)
@@ -14624,7 +12987,7 @@ func _ao_tree(p: Vector2, r: float, y: float) -> void:
 		var a := TAU * k / 8.0
 		var q := _g3(p + Vector2(cos(a), sin(a)) * r, KERB_H + 0.03)
 		if k > 0:
-			_ao.tri(mid, last, q, Vector3.UP, col, one, Vector2.ZERO, Vector2.ZERO, p)
+			_ao_kit._ao.tri(mid, last, q, Vector3.UP, col, one, Vector2.ZERO, Vector2.ZERO, p)
 		last = q
 
 ## ---- street cats and flags on cars -------------------------------------------------------
@@ -14647,179 +13010,9 @@ func cat_at(p: Vector2, y: float, face: Vector2, kind: String) -> void:
 		_add_post(p, 0.15)
 
 ## ---- contact shadows ------------------------------------------------------------------------
-## Where a wall meets the ground, and under a parked car, less of the sky's light gets in and
-## the ground is darker: what makes a house stand on the street and a car sit on it, rather
-## than float over them (the walls' own feet are darker already, in WALL_SHADER). The
-## Compatibility renderer has no ambient occlusion, so it is laid out with the city: soft
-## dark strips multiplied over whatever ground is there -- one mesh a square, drawn after the
-## ground, writing no depth, gone past AO_SEEN. Its ramp is UV.x (1 at the foot, 0 at the
-## rim), its depth COLOR.r, a flat floor to the ramp COLOR.g (the ground under a block on
-## columns, dark all over). It lies a little above the pavement, whatever is under it: on a
-## lawn or a car park it floats a hand's width up, which a soft dark ramp does not show.
-## COLOR.b 1: a tree's shadow instead (see "shadows past the shadows" below), there only
-## where the real ones have ended, and not inside a building's.
-const AO_SHADER := """
-shader_type spatial;
-render_mode unshaded, blend_mul, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
-uniform float strength = 0.62;
-uniform float far = 150.0;
-uniform vec2 sun_off = vec2(0.0);     // a shadow's reach on the ground per metre up
-uniform float sun_stretch = 1.0;      // a ball's shadow, longer along the sun's way
-varying vec3 wpos;
-float h21(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
-float vn(vec2 p) {
-	vec2 i = floor(p);
-	vec2 f = fract(p);
-	f = f * f * (3.0 - 2.0 * f);
-	return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), f.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), f.x), f.y);
-}
-void vertex() {
-	if (COLOR.b > 0.5) {
-		// a tree's patch is laid round the foot of its trunk (UV2), its crown's height in
-		// COLOR.g (/ 40 m): moved out along the sun's way and drawn out, whichever sun it is
-		float len = length(sun_off);
-		vec2 way = len > 0.001 ? sun_off / len : vec2(1.0, 0.0);
-		vec2 rel = VERTEX.xz - UV2;
-		float h = COLOR.g * 40.0;
-		VERTEX.xz = UV2 + sun_off * h + rel + way * dot(rel, way) * (sun_stretch - 1.0);
-		VERTEX.y += len * h * 0.04;   // (on a slope, over the ground rather than in it)
-	}
-	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-}
-void fragment() {
-	float d = length(VERTEX);
-	float in_bld = texture(far_shadow, (wpos.xz - fs_rect.xy) * fs_rect.zw).r;
-	if (COLOR.b > 0.5) {
-		// a crown lets some light through: the shadow dappled, its rim soft
-		float dap = 0.7 + 0.3 * vn(wpos.xz * 0.9);
-		float a = smoothstep(0.0, 0.55, UV.x) * dap;
-		float on = clamp((d - fs_near * fs_fade) / (fs_near * (1.0 - fs_fade) + 0.001), 0.0, 1.0);
-		ALBEDO = vec3(1.0 - fs_dark * COLOR.r * a * on * (1.0 - in_bld));
-	} else {
-		float a = max(UV.x * UV.x, COLOR.g);   // (squared: falls away faster than the straight ramp)
-		float fade = 1.0 - smoothstep(far * 0.5, far, d);
-		ALBEDO = vec3(1.0 - strength * COLOR.r * a * fade);
-	}
-}
-"""
-const AO_SEEN := 150.0
-const AO_W := 1.7             ## how far out from a wall the ground is darker (m)
-var _ao: CBuf = null          ## this square's contact shadows, while it is built (_build_tile)
-var _ao_mat: ShaderMaterial
-
-func _ao_material() -> ShaderMaterial:
-	if _ao_mat == null:
-		_ao_mat = ShaderMaterial.new()
-		var sh := Shader.new()
-		sh.code = _with_far(AO_SHADER)
-		_ao_mat.shader = sh
-		_ao_mat.set_shader_parameter("far", AO_SEEN)
-		_ao_mat.render_priority = -1   # (under the other see-through things: leaves, glass)
-		_far(_ao_mat)
-	return _ao_mat
-
-## the ground round a building's foot: a strip out from each wall, a fan round each outside
-## corner. At an inside corner two strips overlap and it is darker still, as it is. (w
-## negative: a strip in under it instead.) Built for every building, so every height is
-## looked up once: it was 150 us a building done plainly, a third of the buildings' build.
-func _ao_footprint(ring: PackedVector2Array, foot := 1.0, w := AO_W, col := Color(1, 0, 0)) -> void:
-	var n := ring.size()
-	if n > 1 and ring[0].distance_squared_to(ring[n - 1]) < 0.0001:
-		n -= 1
-	if n < 3:
-		return
-	var area := 0.0
-	for i in range(n):
-		area += ring[i].cross(ring[(i + 1) % n])
-	var sg := 1.0 if area > 0.0 else -1.0   # out is to the right of each wall going round
-	var y := KERB_H + 0.025
-	var one := Vector2(foot, 0)
-	var zero := Vector2.ZERO
-	var up := Vector3.UP
-	var foot3 := PackedVector3Array()
-	foot3.resize(n)
-	for i in range(n):
-		foot3[i] = _g3(ring[i], y)
-	var carry := Vector3.INF     # the next wall's outer start, made by the corner before it
-	for i in range(n):
-		var i1 := (i + 1) % n
-		var a := ring[i]
-		var b := ring[i1]
-		var L := a.distance_to(b)
-		if L < 0.05:
-			carry = Vector3.INF
-			continue
-		var d := (b - a) / L
-		var o := Vector2(d.y, -d.x) * sg
-		# the strip, in pieces short enough to follow the ground on a hill
-		var k := maxi(1, int(L / 8.0))
-		var f0 := foot3[i]
-		var r0 := carry if carry != Vector3.INF else _g3(a + o * w, y)
-		for j in range(1, k + 1):
-			var p1 := a.lerp(b, float(j) / k)
-			var f1 := foot3[i1] if j == k else _g3(p1, y)
-			var r1 := _g3(p1 + o * w, y)
-			_ao.tri(f0, f1, r1, up, col, one, one, zero)
-			_ao.tri(f0, r1, r0, up, col, one, zero, zero)
-			f0 = f1
-			r0 = r1
-		carry = Vector3.INF
-		# an outside corner at b: a fan from the last wall's strip round to the next one's
-		var c := ring[(i + 2) % n]
-		if c.distance_to(b) < 0.05:
-			continue
-		var d2 := (c - b).normalized()
-		if d.cross(d2) * sg * signf(w) > 0.0:   # (turning towards the inside: the outside opens up)
-			var o2 := Vector2(d2.y, -d2.x) * sg
-			var turn := o.angle_to(o2)
-			var steps := clampi(int(ceil(absf(turn) / 1.6)), 1, 3)   # (a right angle: one; the soft ramp hides the chamfer)
-			for st in range(1, steps + 1):
-				var nx := _g3(b + o.rotated(turn * float(st) / steps) * w, y)
-				_ao.tri(foot3[i1], r0, nx, up, col, one, zero, zero)
-				r0 = nx
-			carry = r0   # (b + o2 * w: where the next wall's strip starts)
-
-## a soft round patch on the ground round c (a tree's trunk): dark in the middle, gone at r
-func _ao_disc(c: Vector2, r: float, k: float) -> void:
-	if _ao == null:
-		return
-	var col := Color(k, 0, 0)
-	var mid := _g3(c, KERB_H + 0.025)   # (one height: a metre across, the ground is level enough)
-	var one := Vector2(1, 0)
-	var last := mid + Vector3(r, 0, 0)
-	for i in range(1, 7):
-		var a := TAU * i / 6.0
-		var q := mid + Vector3(cos(a) * r, 0, sin(a) * r)
-		_ao.tri(mid, last, q, Vector3.UP, col, one, Vector2.ZERO, Vector2.ZERO)
-		last = q
-
-var _ao_cars: Array = []      ## [middle, nose] of the first cars given a patch (for tests)
-
-## under a parked car (middle c, nose along fwd): dark under it, softening out past its sides
-func _ao_car(c: Vector2, fwd: Vector2, lift: float) -> void:
-	if _ao == null:
-		return
-	if _ao_cars.size() < 400:
-		_ao_cars.append([c, fwd])
-	var sd := Vector2(fwd.y, -fwd.x)
-	var col := Color(1.0, 0, 0)
-	var inner: Array = []
-	var outer: Array = []
-	for q: Vector2 in [Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), Vector2(-1, 1)]:
-		inner.append(c + sd * q.x * 0.75 + fwd * q.y * 1.95)
-		outer.append(c + sd * q.x * 1.7 + fwd * q.y * 3.1)
-	var one := Vector2(1, 0)
-	var I: Array = []
-	var O: Array = []
-	for i in range(4):
-		I.append(_g3(inner[i], lift))
-		O.append(_g3(outer[i], lift))
-	_ao.tri(I[0], I[1], I[2], Vector3.UP, col, one, one, one)
-	_ao.tri(I[0], I[2], I[3], Vector3.UP, col, one, one, one)
-	for i in range(4):
-		var j := (i + 1) % 4
-		_ao.tri(I[i], I[j], O[j], Vector3.UP, col, one, one, Vector2.ZERO)
-		_ao.tri(I[i], O[j], O[i], Vector3.UP, col, one, Vector2.ZERO, Vector2.ZERO)
+## In `contact_shadows.gd` (`ContactShadows`, made once: `_ao_kit`).
+const ContactShadows := preload("res://game/streets/contact_shadows.gd")
+var _ao_kit := ContactShadows.new(self)
 
 ## ---- paint at junctions, speed limits --------------------------------------------------------
 var _stop_lines: Array = []          ## [junction, way in, line before it, road width, one-way, "stop", "give" or ""]
@@ -16686,134 +14879,15 @@ func _apply_signals() -> void:
 		_light_lamp(_ped_mats[g][1], cols[2], walk)
 
 ## ---- the sky: a photograph -----------------------------------------------------------------
-## By day the sky is a photo (textures/sky_day.jpg: the upper half of Poly Haven's CC0
-## "kloofendal_48d_partly_cloudy_puresky", tonemapped by textures/hdr_sky.py; in the evening
-## sky_evening.jpg, their "kloppenheim_06_puresky" kept darker), on a dome that
-## follows the camera, drawn unlit and through no fog. It is turned so the sun in it stands
-## where the sunlight comes from, and fades into the fog at the horizon. The shell keeps its
-## own procedural sky behind it (it retints that on a palette change), which shows at night,
-## when the dome is hidden. The palette's sky tone tints it lightly, as it does everything.
-## Each: the photo; where its sun is across it (0..1); its average colour and its colour
-## along the horizon, as stored (hdr_sky.py prints all three); where the sunlight comes from
-## (the light's rotation, degrees: the evening sun in the west-south-west, where it sets in
-## Givatayim in the autumn, 13 degrees up -- the photo's is 5, which made every shadow 12
-## times the height of what cast it); its colour (palette roles: ink toward warn) and energy.
-const SKIES := {
-	"day": {"photo": "sky_day.jpg", "sun_u": 0.595, "mean": Vector3(0.626, 0.686, 0.792),
-		"horizon": Vector3(0.742, 0.758, 0.801), "sun": Vector3(-50, -28, 0), "warm": 0.22, "energy": 1.1},
-	"evening": {"photo": "sky_evening.jpg", "sun_u": 0.6118, "mean": Vector3(0.44, 0.523, 0.623),
-		"horizon": Vector3(0.598, 0.592, 0.584), "sun": Vector3(-13, -78, 0), "warm": 0.55, "energy": 1.3},
-}
+## In `sky.gd` (`SkyDome`, made once: `_skydome`).
+const SkyDome := preload("res://game/streets/sky.gd")
+var _skydome := SkyDome.new(self)
+
 var _evening := false
-var _sky_tex := {}                   ## photo -> its texture, once loaded
-
-func _sky_now() -> Dictionary:
-	return SKIES["evening" if _evening else "day"]
-const SKY_SHADER := """
-shader_type spatial;
-render_mode unshaded, fog_disabled, cull_front, shadows_disabled;
-uniform sampler2D photo : filter_linear, repeat_enable;
-uniform vec3 tint = vec3(1.0);
-uniform vec3 horizon = vec3(0.75);
-uniform float turn = 0.0;
-varying vec3 dir;
-void vertex() { dir = VERTEX; }
-void fragment() {
-	vec3 d = normalize(dir);
-	float up = clamp(d.y, 0.0, 1.0);
-	float u = atan(d.x, -d.z) / 6.2831853 + 0.5 + turn;
-	float v = 1.0 - asin(up) / 1.5707963;
-	vec3 c = texture(photo, vec2(u, v)).rgb;
-	ALBEDO = mix(horizon, c * tint, smoothstep(0.0, 0.07, up));
-}
-"""
-var _sky_dome: MeshInstance3D
-var _sky_mat: ShaderMaterial
-
-## the palette's say in the sky: its sky tone's hue (not its brightness) over the photo's
-func _sky_tint() -> Vector3:
-	var t: Color = _tone.get("sky", Color(0.6, 0.7, 0.8))
-	var lt := maxf(t.get_luminance(), 0.01)
-	var m: Vector3 = _sky_now()["mean"]
-	var lm := m.dot(Vector3(0.2126, 0.7152, 0.0722))
-	var ratio := Vector3(t.r / lt, t.g / lt, t.b / lt) / (m / lm)
-	return Vector3.ONE.lerp(ratio, 0.25)
-
-## one of the photo's colours, tinted as the dome draws it
-## no magenta in the light: green lifted to the middle of red and blue when it is the lowest.
-## The day's haze (the fog, 205/190/192) and the shade's fill (201/197/200) had green lowest --
-## a pink cast over the whole scene, worst far off where the fog is thick; daylight's haze and
-## shade go grey to blue, never pink. tests/tint_card.gd
-static func _unpink(c: Color) -> Color:
-	var mid := (c.r + c.b) * 0.5
-	if c.g < mid:
-		c.g = mid
-	return c
-
-func _sky_col(c: Vector3) -> Color:
-	var t := _sky_tint()
-	return Color(c.x * t.x, c.y * t.y, c.z * t.z)
-
-## what the glass and the paint reflect: [overhead, horizon], the photo's by day
-func _sky_reflect() -> Array:
-	if _night or _sky_dome == null:
-		var sk := env.sky.sky_material as ProceduralSkyMaterial
-		return [sk.sky_top_color, sk.sky_horizon_color]
-	return [_sky_col(_sky_now()["mean"]), _sky_col(_sky_now()["horizon"])]
-
-func _build_sky_dome() -> void:
-	var tex := _sky_photo()
-	if tex == null:
-		return
-	_sky_mat = ShaderMaterial.new()
-	var sh := Shader.new()
-	sh.code = SKY_SHADER
-	_sky_mat.shader = sh
-	_sky_mat.set_shader_parameter("photo", tex)
-	# a whole sphere, not Godot's hemisphere: that one closes with a flat disc at its middle's
-	# height, and the dome stands on the eye -- a plane through the eye, edge-on, that a phone's
-	# GPU drew now and then as a flickering line straight across the screen at the horizon,
-	# over near hedges too (tests/horizon_line.gd). The lower half is the horizon's haze.
-	var mesh := SphereMesh.new()
-	mesh.radius = 1900.0
-	mesh.height = 3800.0
-	mesh.is_hemisphere = false
-	mesh.radial_segments = 32
-	mesh.rings = 20
-	mesh.material = _sky_mat
-	_sky_dome = MeshInstance3D.new()
-	_sky_dome.mesh = mesh
-	_sky_dome.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_sky_dome.extra_cull_margin = 4000.0
-	world.add_child(_sky_dome)
-	_retint_sky_dome()
-
-## the dome round the camera, wherever it went this frame
-var sky_drop := 0.0                  ## tests: the dome this far below the eye (tests/horizon_line.gd)
 func _sky_follow() -> void:
-	if _sky_dome != null:
-		_sky_dome.global_position = cam.global_position - Vector3(0.0, sky_drop, 0.0)
-	_grass_follow()
-
-func _retint_sky_dome() -> void:
-	if _sky_dome == null:
-		return
-	_sky_dome.visible = not _night
-	var t := _sky_tint()
-	_sky_mat.set_shader_parameter("tint", t)
-	var hz: Vector3 = _sky_now()["horizon"]
-	_sky_mat.set_shader_parameter("photo", _sky_photo())
-	_sky_mat.set_shader_parameter("horizon", Vector3(hz.x * t.x, hz.y * t.y, hz.z * t.z))
-	# turn the photo so its sun is where the light comes from (the light shines down its -Z)
-	var to_sun := sun.global_transform.basis.z if sun.is_inside_tree() else Basis.from_euler(sun.rotation).z
-	_sky_mat.set_shader_parameter("turn", float(_sky_now()["sun_u"]) - (atan2(to_sun.x, -to_sun.z) / TAU + 0.5))
-
-func _sky_photo() -> Texture2D:
-	var f: String = _sky_now()["photo"]
-	if not _sky_tex.has(f):
-		_sky_tex[f] = load(TEX_DIR + f) as Texture2D
-	return _sky_tex[f]
-
+	if _skydome._sky_dome != null:
+		_skydome._sky_dome.global_position = cam.global_position - Vector3(0.0, _skydome.sky_drop, 0.0)
+	_grass_kit._grass_follow()
 ## ---- look: every colour is a palette role, mixed for daylight ---------------------------
 ## The kit's palettes are neon on dark. A street in daylight is greys, creams and greens, so
 ## each tone, still mixed from the palette's roles (so /look still reskins it), keeps only
@@ -16978,7 +15052,7 @@ func _tones() -> void:
 	# water: the sky it reflects (the photo's colour, a quarter the palette's as the dome is),
 	# darkened as still water is. From the palette's "player" it was khaki under "sunset"
 	# (#907f64: Delft's and Leiden's canals read as sand, every town's water with them).
-	_tone["water"] = _sky_col(_sky_now()["mean"]).darkened(0.45)
+	_tone["water"] = _skydome._sky_col(_skydome._sky_now()["mean"]).darkened(0.45)
 
 func _retint_city() -> void:
 	_tones()
@@ -16989,7 +15063,7 @@ func _retint_city() -> void:
 		(_smat["shopglass"] as StandardMaterial3D).emission = _tone["shoplight"]
 	if _shop_mat != null:
 		_shop_interior()   # (its colours from the tones again)
-	_retint_trees()
+	_trees._retint_trees()
 	if _wall_mat != null:
 		_wall_mat.set_shader_parameter("wall_a", _tone["wall"])
 		_wall_mat.set_shader_parameter("wall_b", _tone["wall2"])
@@ -17011,9 +15085,9 @@ func _retint_city() -> void:
 	if env != null:
 		# by day the photo sky (_sky_dome) sets the haze: the fog takes its horizon, so far
 		# streets melt into the sky, and the shade its blue
-		var hor := _unpink(_sky_col(_sky_now()["horizon"]))
+		var hor := _skydome._unpink(_skydome._sky_col(_skydome._sky_now()["horizon"]))
 		var sky := env.sky.sky_material as ProceduralSkyMaterial
-		sky.sky_top_color = _sky_col(_sky_now()["mean"])
+		sky.sky_top_color = _skydome._sky_col(_skydome._sky_now()["mean"])
 		sky.sky_horizon_color = hor
 		sky.ground_horizon_color = hor
 		sky.ground_bottom_color = _tone["ground"]
@@ -17022,7 +15096,7 @@ func _retint_city() -> void:
 		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 		# (in the evening the shade is the sky's blue, not the haze: the warm light and the cool
 		# shade are what makes golden hour, and the haze in it turned the shade khaki)
-		env.ambient_light_color = _unpink(_sky_col(_sky_now()["mean"]).lerp(_tone["haze"], 0.1 if _evening else 0.4))
+		env.ambient_light_color = _skydome._unpink(_skydome._sky_col(_skydome._sky_now()["mean"]).lerp(_tone["haze"], 0.1 if _evening else 0.4))
 		# (the fill light 0.6 of what it was: with more, every shade was lifted and the shapes
 		# went flat and pastel -- tried on the look bench beside the user's photos)
 		env.ambient_light_energy = (0.62 if _evening else 0.55) * 0.6
@@ -17041,11 +15115,11 @@ func _retint_city() -> void:
 	if sun != null:
 		# warm: ink toward warn, and in the evening toward hazard too (warn alone was lemon;
 		# with a little of the red it is the orange of a low sun)
-		sun.light_color = Palette.col("ink").lerp(Palette.col("warn"), float(_sky_now()["warm"])) \
+		sun.light_color = Palette.col("ink").lerp(Palette.col("warn"), float(_skydome._sky_now()["warm"])) \
 			.lerp(Palette.col("hazard"), 0.16 if _evening else 0.0)
-		sun.light_energy = float(_sky_now()["energy"]) * 1.12
+		sun.light_energy = float(_skydome._sky_now()["energy"]) * 1.12
 		sun.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_AND_SKY
-	_retint_sky_dome()
+	_skydome._retint_sky_dome()
 	if _wall_mat != null:
 		_wall_mat.set_shader_parameter("lit", _tone["lit"])
 		_wall_mat.set_shader_parameter("lit_cool", _tone["litcool"])
@@ -17092,12 +15166,12 @@ func _retint_city() -> void:
 	if _car_shader_mat != null:   # the cars' reflections, lamps and wells
 		_car_material()
 	if _wall_mat != null and env != null:   # what the windows reflect: the sky as it is now
-		var rs := _sky_reflect()
+		var rs := _skydome._sky_reflect()
 		_wall_mat.set_shader_parameter("sky_top", rs[0])
 		_wall_mat.set_shader_parameter("sky_hor", rs[1])
 	_apply_signals_safe()
 	_retint_kerbs()
-	_retint_ground()
+	_ground._retint_ground()
 	_retint_edge()
 	if _blob_plane != null:
 		(_blob_plane.material as ShaderMaterial).set_shader_parameter("tint", Palette.col("bg"))
@@ -17141,7 +15215,7 @@ func _build_car() -> void:
 	_blob.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_blob.visible = _blobs_on
 	_car.add_child(_blob)
-	_build_cockpit()
+	_seat._build_cockpit()
 	_build_car_signals()
 
 ## Where the real shadows are off (the lowest quality: a phone that could not keep up), a
@@ -17261,193 +15335,9 @@ func _nearest_lane(r: Dictionary, off: float) -> float:
 	return best
 
 ## ---- the driver's seat ----------------------------------------------------------------------
-## The view from behind the wheel, like a dashcam a little lower: the bonnet through the
-## windscreen (the body's own faces point out, so from inside only the bonnet and the mirrors
-## show), and inside, the dashboard, a steering wheel that turns with the front wheels, the
-## windscreen pillars, the roof's edge and the mirror. Left-hand drive: the seat is on the
-## car's left (+X, the car facing +Z).
-const SEAT := Vector3(0.37, 1.2, -0.32)
-
-func _build_cockpit() -> void:
-	_cockpit_node = Node3D.new()
-	_cockpit_node.visible = false
-	_body.add_child(_cockpit_node)
-	var dark: Color = _tone["cartrim"]
-	var b := Buf.new()
-	var box := func(c: Vector3, sz: Vector3, col: Color) -> void:
-		var h := sz * 0.5
-		for f: Array in [[Vector3(h.x, 0, 0), Vector3(0, h.y, 0), Vector3(0, 0, h.z)], [Vector3(-h.x, 0, 0), Vector3(0, h.y, 0), Vector3(0, 0, h.z)],
-				[Vector3(0, h.y, 0), Vector3(h.x, 0, 0), Vector3(0, 0, h.z)], [Vector3(0, -h.y, 0), Vector3(h.x, 0, 0), Vector3(0, 0, h.z)],
-				[Vector3(0, 0, h.z), Vector3(h.x, 0, 0), Vector3(0, h.y, 0)], [Vector3(0, 0, -h.z), Vector3(h.x, 0, 0), Vector3(0, h.y, 0)]]:
-			var n: Vector3 = f[0]
-			var u: Vector3 = f[1]
-			var v: Vector3 = f[2]
-			var o: Vector3 = c + n
-			b.tri(o - u - v, o + u - v, o + u + v, n.normalized(), col)
-			b.tri(o - u - v, o + u + v, o - u + v, n.normalized(), col)
-	# the dashboard under the windscreen (down to the footwell), the instrument hood in
-	# front of the driver, the centre console, and the doors' insides below the windows
-	box.call(Vector3(0, 0.7, 0.78), Vector3(1.7, 0.5, 0.62), dark)
-	box.call(Vector3(0.37, 1.0, 0.55), Vector3(0.44, 0.1, 0.16), dark.darkened(0.2))   # the binnacle
-	box.call(Vector3(0, 0.5, 0.2), Vector3(0.3, 0.3, 0.6), dark.lightened(0.05))
-	for sx: float in [-1.0, 1.0]:
-		box.call(Vector3(sx * 0.84, 0.66, 0.05), Vector3(0.05, 0.56, 1.9), dark.lightened(0.08))
-	box.call(Vector3(0, 1.36, 0.36), Vector3(0.24, 0.07, 0.03), dark)           # the mirror
-	box.call(Vector3(0, 1.4, 0.32), Vector3(0.03, 0.06, 0.03), dark)
-	# the pillars beside the windscreen and the roof's edge over it, seen from inside
-	var shape: Array = CAR_SHAPES["sedan"]
-	var hw: float = shape[2]
-	var c0: Vector2 = shape[1][0]
-	var c1: Vector2 = shape[1][1]
-	var lo := hw - 0.06
-	var up := hw - 0.24
-	var quad2 := func(a: Vector3, e: Vector3, f: Vector3, d: Vector3, col: Color) -> void:
-		var n := (e - a).cross(d - a).normalized()
-		for sg: float in [1.0, -1.0]:
-			b.tri(a, e, f, n * sg, col)
-			b.tri(a, f, d, n * sg, col)
-	for sx: float in [-1.0, 1.0]:
-		var foot := Vector3(lo * sx, c0.y, c0.x)
-		var top := Vector3(up * sx, c1.y, c1.x)
-		var inw := Vector3(-sx * 0.11, 0, 0)
-		quad2.call(foot, top, top + inw + Vector3(0, -0.02, -0.03), foot + inw + Vector3(0, 0, -0.04), dark)
-	quad2.call(Vector3(-up, c1.y - 0.01, c1.x), Vector3(up, c1.y - 0.01, c1.x), Vector3(up, c1.y + 0.01, c1.x - 0.5),
-			Vector3(-up, c1.y + 0.01, c1.x - 0.5), dark.lightened(0.1))
-	# the bonnet through the windscreen, in the car's paint (the body itself is hidden here:
-	# it is built to be seen from outside, and from inside it showed its backs)
-	var low: Array = shape[0]
-	var hb := Buf.new()
-	var hood: Array = []
-	for q: Vector2 in low:
-		if q.x > c0.x - 0.05 and q.y > 0.5:
-			hood.append(q)
-	hood.sort_custom(func(a: Vector2, e: Vector2): return a.x < e.x)
-	for i in range(hood.size() - 1):
-		var a: Vector2 = hood[i]
-		var e: Vector2 = hood[i + 1]
-		var n := Vector3(0, e.x - a.x, -(e.y - a.y)).normalized()
-		if n.y < 0.0:
-			n = -n
-		hb.tri(Vector3(-hw, a.y, a.x), Vector3(hw, a.y, a.x), Vector3(hw, e.y, e.x), n, Color.WHITE)
-		hb.tri(Vector3(-hw, a.y, a.x), Vector3(hw, e.y, e.x), Vector3(-hw, e.y, e.x), n, Color.WHITE)
-	var hmi := MeshInstance3D.new()
-	var ham := ArrayMesh.new()
-	ham.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, hb.arrays())
-	ham.surface_set_material(0, _car_mat("paint", "paint"))
-	hmi.mesh = ham
-	hmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_cockpit_node.add_child(hmi)
-	var mi := MeshInstance3D.new()
-	var am := ArrayMesh.new()
-	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, b.arrays())
-	var m := StandardMaterial3D.new()
-	m.vertex_color_use_as_albedo = true
-	m.roughness = 0.9
-	am.surface_set_material(0, m)
-	mi.mesh = am
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_cockpit_node.add_child(mi)
-	# the wheel: a ring and three spokes, tilted back toward the driver, turned with the
-	# front wheels (about 15 turns of it to one of theirs)
-	# the speedometer and rev counter in the binnacle, facing the driver, and the green
-	# indicator arrows between them
-	var face_c: Color = _tone["tyre"].darkened(0.4)
-	var tick_c: Color = _tone["mark"]
-	var dial_at := [Vector3(0.465, 1.03, 0.43), Vector3(0.275, 1.03, 0.43)]
-	var dial_b := Basis(Vector3.RIGHT, 0.32)   # tipped back toward the eyes
-	var b0: Buf = b
-	b = Buf.new()   # (the cockpit's own mesh is built already: the dials get one of theirs)
-	for di in range(2):
-		var c: Vector3 = dial_at[di]
-		var R := 0.052
-		for i in range(16):
-			var a0 := TAU * i / 16.0
-			var a1 := TAU * (i + 1) / 16.0
-			var e0 := Vector3(cos(a0), sin(a0), 0)
-			var e1 := Vector3(cos(a1), sin(a1), 0)
-			b.tri(c, c + dial_b * (e0 * R), c + dial_b * (e1 * R), dial_b * Vector3.FORWARD, face_c)
-			# a bright rim round it, so the dial reads in a dark cabin
-			var z := Vector3(0, 0, -0.001)
-			b.tri(c + dial_b * (e0 * R + z), c + dial_b * (e0 * (R + 0.006) + z), c + dial_b * (e1 * (R + 0.006) + z), dial_b * Vector3.FORWARD, tick_c)
-			b.tri(c + dial_b * (e0 * R + z), c + dial_b * (e1 * (R + 0.006) + z), c + dial_b * (e1 * R + z), dial_b * Vector3.FORWARD, tick_c)
-		for i in range(9):
-			var a := 2.2 - 4.4 * i / 8.0 + PI * 0.5
-			var d := Vector3(cos(a), sin(a), 0)
-			var nn := Vector3(-d.y, d.x, 0) * 0.003
-			var p0 := d * R * 0.78
-			var p1 := d * R * 0.95
-			b.tri(c + dial_b * (p0 - nn + Vector3(0, 0, -0.002)), c + dial_b * (p1 - nn + Vector3(0, 0, -0.002)), c + dial_b * (p1 + nn + Vector3(0, 0, -0.002)), dial_b * Vector3.FORWARD, tick_c)
-			b.tri(c + dial_b * (p0 - nn + Vector3(0, 0, -0.002)), c + dial_b * (p1 + nn + Vector3(0, 0, -0.002)), c + dial_b * (p0 + nn + Vector3(0, 0, -0.002)), dial_b * Vector3.FORWARD, tick_c)
-		var pivot := Node3D.new()
-		pivot.position = c + dial_b * Vector3(0, 0, -0.004)
-		pivot.basis = dial_b
-		_cockpit_node.add_child(pivot)
-		var needle := MeshInstance3D.new()
-		var nm := BoxMesh.new()
-		nm.size = Vector3(0.004, 0.05, 0.002)
-		needle.mesh = nm
-		needle.position = Vector3(0, 0.022, 0)
-		needle.material_override = mat("hazard", 1.4)
-		pivot.add_child(needle)
-		if di == 0:
-			_dial_speed = pivot
-		else:
-			_dial_rpm = pivot
-	var dmi := MeshInstance3D.new()
-	var dam := ArrayMesh.new()
-	dam.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, b.arrays())
-	dam.surface_set_material(0, m)
-	dmi.mesh = dam
-	dmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_cockpit_node.add_child(dmi)
-	b = b0
-	for side: int in [-1, 1]:
-		var arrow := MeshInstance3D.new()
-		var ab := Buf.new()
-		var sx := -float(side)   # the car's right is -X
-		var c := Vector3(0.37 + sx * 0.03, 1.03, 0.43)
-		ab.tri(c + dial_b * Vector3(sx * 0.018, 0, -0.003), c + dial_b * Vector3(-sx * 0.01, 0.013, -0.003), c + dial_b * Vector3(-sx * 0.01, -0.013, -0.003), dial_b * Vector3.FORWARD, Color.WHITE)
-		var aam := ArrayMesh.new()
-		aam.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, ab.arrays())
-		arrow.mesh = aam
-		arrow.material_override = mat("friend", 2.2)
-		arrow.visible = false
-		_cockpit_node.add_child(arrow)
-		_dash_arrows[side] = arrow
-	_wheel_node = Node3D.new()
-	_wheel_node.position = Vector3(0.37, 0.94, 0.3)
-	_wheel_node.rotation.x = -0.45
-	_cockpit_node.add_child(_wheel_node)
-	var wb := Buf.new()
-	var rim := dark.darkened(0.3)
-	var R := 0.185
-	for i in range(14):
-		var a0 := TAU * i / 14.0
-		var a1 := TAU * (i + 1) / 14.0
-		var p0 := Vector3(cos(a0) * R, sin(a0) * R, 0)
-		var p1 := Vector3(cos(a1) * R, sin(a1) * R, 0)
-		var r0 := p0.normalized() * 0.022
-		var r1 := p1.normalized() * 0.022
-		for side: float in [1.0, -1.0]:
-			var zz := Vector3(0, 0, 0.022 * side)
-			wb.tri(p0 + zz - r0, p1 + zz - r1, p1 + zz + r1, Vector3(0, 0, side), rim)
-			wb.tri(p0 + zz - r0, p1 + zz + r1, p0 + zz + r0, Vector3(0, 0, side), rim)
-			wb.tri(p0 + r0 * side - zz, p1 + r1 * side - zz, p1 + r1 * side + zz, p0.normalized() * side, rim)
-			wb.tri(p0 + r0 * side - zz, p1 + r1 * side + zz, p0 + r0 * side + zz, p0.normalized() * side, rim)
-	for a: float in [PI * 0.5 + PI, 0.0, PI]:
-		var d := Vector3(cos(a), sin(a), 0) * R
-		var n := Vector3(-d.y, d.x, 0).normalized() * 0.02
-		for side: float in [1.0, -1.0]:
-			var zz := Vector3(0, 0, 0.012 * side)
-			wb.tri(zz - n, d + zz - n, d + zz + n, Vector3(0, 0, side), rim)
-			wb.tri(zz - n, d + zz + n, zz + n, Vector3(0, 0, side), rim)
-	var wmi := MeshInstance3D.new()
-	var wam := ArrayMesh.new()
-	wam.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, wb.arrays())
-	wam.surface_set_material(0, m)
-	wmi.mesh = wam
-	wmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_wheel_node.add_child(wmi)
+## In `cockpit.gd` (`Cockpit`, made once: `_seat`).
+const Cockpit := preload("res://game/streets/cockpit.gd")
+var _seat := Cockpit.new(self)
 
 ## ---- on foot ---------------------------------------------------------------------------------
 ## Out of the car (the "walk" button, or F): the driver steps out of the door onto the
@@ -17624,7 +15514,7 @@ func _film_begin(id: String) -> void:
 		_set_character(a, PEOPLE[who % PEOPLE.size()], float(pp.get("tall", 1.70)))
 		_humanize(a, 9001 + who * 31)
 		if bool(pp.get("talk", false)):
-			_talker(a, 9001 + who * 31)
+			_talk._talker(a, 9001 + who * 31)
 		_people_lod(a)
 		var A := Vector2(float(pp["at"][0]), float(pp["at"][1]))
 		var B := Vector2(float(pp["to"][0]), float(pp["to"][1])) if pp.has("to") else A
@@ -18260,7 +16150,7 @@ func _foot_camera(dt: float) -> void:
 		return
 	_cam_yaw = lerp_angle(_cam_yaw, _view_yaw, 1.0 - exp(-dt * 4.0))
 	var back := Vector2(cos(_cam_yaw), sin(_cam_yaw))
-	var clear := _clear_behind(p, -back, 3.4)
+	var clear := _head_look._clear_behind(p, -back, 3.4)
 	_cam_dist = clear if clear < _cam_dist else lerpf(_cam_dist, clear, 1.0 - exp(-dt * 2.0))
 	var e2 := p - back * _cam_dist
 	var eye := Vector3(e2.x, maxf(gy + 2.0, _decks.surf(e2, gy) + 1.3), e2.y)
@@ -18513,7 +16403,7 @@ func _sedan(paint: String) -> Node3D:
 	_player_car_mat.set_shader_parameter("plate_seed", randf() * 1000.0)
 	_car_material()   # (sets its parameters, the paint among them)
 	var mi := MeshInstance3D.new()
-	mi.mesh = _car_body("sedan", false).mesh(_player_car_mat)
+	mi.mesh = _bodies._car_body("sedan", false).mesh(_player_car_mat)
 	root.add_child(mi)
 	return _sedan_rest(root, paint)
 
@@ -18554,14 +16444,14 @@ func _sedan_rest(root: Node3D, paint: String) -> Node3D:
 	# lights and plates
 	# head and tail lights laid on the body's rounded corners, like the traffic's (_lamp)
 	var low := PackedVector2Array(CAR_SHAPES["sedan"][0])
-	var heads := CarMesh.new()
-	var tails := CarMesh.new()
+	var heads := CarBodies.CarMesh.new()
+	var tails := CarBodies.CarMesh.new()
 	for sx: float in [-1.0, 1.0]:
-		_lamp(heads, low, 0.9, sx * 0.6, 0.68, 0.36, 0.12, true, Color.WHITE)
-		_lamp(tails, low, 0.9, sx * 0.63, 0.82, 0.32, 0.14, false, Color.WHITE)
+		_bodies._lamp(heads, low, 0.9, sx * 0.6, 0.68, 0.36, 0.12, true, Color.WHITE)
+		_bodies._lamp(tails, low, 0.9, sx * 0.63, 0.82, 0.32, 0.14, false, Color.WHITE)
 	for pair: Array in [[heads, mat("ink", 1.2)], [tails, mat("hazard", 1.0)]]:
 		var lm := MeshInstance3D.new()
-		lm.mesh = (pair[0] as CarMesh).mesh(pair[1])
+		lm.mesh = (pair[0] as CarBodies.CarMesh).mesh(pair[1])
 		root.add_child(lm)
 	var plate := "warn" if String(_place.get("look", "")) == "med" else "ink"   # Israeli plates are yellow
 	root.add_child(_part(BoxMesh, Vector3(0, 0.45, 2.28), Vector3(0.52, 0.12, 0.02), mat(plate, 0.1)))
@@ -18599,8 +16489,8 @@ func _sedan_rest(root: Node3D, paint: String) -> Node3D:
 			pivot.add_child(spin)
 			# the same tyre and five-spoke rim as the traffic's, in the player's car shader:
 			# the spokes are in the rim's own coordinates, so they turn with it
-			var wm := CarMesh.new()
-			_wheel(wm, Vector3.ZERO, 0.33, sx, Color(_tone["tyre"], 0.3), Color(_tone["rim"], 0.4))
+			var wm := CarBodies.CarMesh.new()
+			_bodies._wheel(wm, Vector3.ZERO, 0.33, sx, Color(_tone["tyre"], 0.3), Color(_tone["rim"], 0.4))
 			var wheel := MeshInstance3D.new()
 			wheel.mesh = wm.mesh(_player_car_mat)
 			spin.add_child(wheel)
@@ -18773,7 +16663,7 @@ func _physics_process(dt: float) -> void:
 	if not _loaded or finished or _picker != null:
 		return   # the address picker is open: the world waits
 	if _paused:   # paused (or looking from above): everything holds; the engine falls quiet
-		_engine_tick(dt)
+		_sounds._engine_tick(dt)
 		return
 	_prof_ticks += 1
 	_p0()
@@ -18812,7 +16702,7 @@ func _physics_process(dt: float) -> void:
 		_p("walk")
 		_names_tick(dt)
 		_p("names")
-		_engine_tick(dt)
+		_sounds._engine_tick(dt)
 		_p("sound")
 		if people_now:
 			_people_tick(wdt)
@@ -18856,7 +16746,7 @@ func _physics_process(dt: float) -> void:
 	_p("rules")
 	_names_tick(dt)
 	_p("names")
-	_engine_tick(dt)
+	_sounds._engine_tick(dt)
 	_p("sound")
 	if people_now:
 		_people_tick(wdt)
@@ -18991,7 +16881,7 @@ func _frame() -> void:
 	_pose_car(_view_pos, _view_yaw, _view_y)
 	_traffic.draw(1.0 if _paused else _traffic_f(f))   # (held: where the cars stand, not between two ticks)
 	_p("traffic draw")
-	_head_tick(dt)
+	_head_look._head_tick(dt)
 	_camera(dt, _view_pos, _view_yaw)
 	_zoom_camera(dt)
 	_sky_follow()
@@ -19093,7 +16983,7 @@ func _set_quality(q: int) -> void:
 	var row: Array = QUALITY[_quality]
 	view.msaa_3d = row[0]
 	_set_textured(_quality > 0)
-	_tree_quality()
+	_trees._tree_quality()
 	sun.shadow_enabled = float(row[1]) > 0.0
 	sun.directional_shadow_max_distance = maxf(float(row[1]), 1.0) if not _night else 1.0   # (the moon's: none to speak of, _set_night)
 	view.scaling_3d_scale = row[2]
@@ -19103,7 +16993,7 @@ func _set_quality(q: int) -> void:
 		env.fog_density = _fog_night() if _night else _fog_day()
 	_set_blobs(not sun.shadow_enabled)
 	_far_update()
-	_grass_quality()
+	_grass_kit._grass_quality()
 
 ## ---- a weak machine's levels: less of the town drawn ----------------------------------------
 ## A browser pays CPU for every draw call and every object in view -- WebGL's checks, ANGLE's
@@ -19816,13 +17706,6 @@ func _fly(dt: float) -> void:
 	_y = ground
 	_vy = lerpf(_vy, gv, 1.0 - pow(0.5, dt * 60.0))   # (half way a 60th of a second, whatever the tick: slow frames tick 30 a second)
 
-## knocked off the ground (a hard hit): up it goes, a little
-func _hop(up: float) -> void:
-	if not _air:
-		_air = true
-		_y = _decks.surf(_pos, _y)
-	_vy = maxf(_vy, up)
-
 func _place_car(dt: float) -> void:
 	_pose_car(_pos, _yaw, _y)
 	var k := 1.0 - exp(-dt * 6.0)
@@ -19858,228 +17741,9 @@ func _pose_car(p: Vector2, yaw: float, y := NAN) -> void:
 		_car.rotation.x = -bump_pitch
 
 ## ---- the sounds of driving -----------------------------------------------------------------
-## Loops made by sounds/make_sounds.py (it says why each is what it is), played at a pitch
-## and a volume set here every frame: the engine at the revs a simple automatic gearbox gives
-## (the loop is the engine at 1200 rpm), louder and brighter under load; the tyres' roar and
-## the wind with the speed; the nearest car going by as its tyres' whoosh, its pitch falling as
-## it passes; the city far off, always. A looping clip with its pitch changed is cheap and
-## smooth in a browser, where pushing generated audio every frame stutters whenever a frame
-## is late. (The engine used to be made here at load: a buzz of sharp pulses almost all
-## below 200 Hz, the only sound there was, and a laptop's speaker turned it into a rough
-## flutter that players switched off.)
-
-const SND_DIR := "res://game/streets/sounds/"
-const IDLE_RPM := 800.0
-const GEAR_RPM := [420.0, 240.0, 165.0, 122.0, 96.0]   ## rpm per m/s, first to fifth
-const SND_LOOPS := ["engine", "engine_load", "road", "wind", "road", "city"]
-var _engine: Array = []              ## players: SND_LOOPS, the second "road" the car going by
-var _rpm := IDLE_RPM
-var _gear_n := 1
-var _load := 0.0
-var _by_id := 0                      ## the car going by, and how fast it closes on you
-var _by_d := INF
-var _by_closing := 0.0
-
-func _build_engine() -> void:
-	for name: String in SND_LOOPS:
-		var p := AudioStreamPlayer.new()
-		p.stream = load(SND_DIR + name + ".wav")
-		p.volume_db = -80.0
-		add_child(p)
-		_engine.append(p)
-
-func _engine_tick(dt: float) -> void:
-	if _engine.is_empty():
-		return
-	var off := Audio.muted() or finished or _paused
-	_street_snd_tick(dt, off)
-	if _rails != null:
-		_rails.sound(off)
-	for i in range(_engine.size()):
-		var p: AudioStreamPlayer = _engine[i]
-		if off and p.playing:
-			p.stop()
-		elif not off and not p.playing:
-			p.play(1.5 if i == 4 else 0.0)   # (the car going by: its own stretch of road)
-	if off:
-		return
-	# the gearbox: up a gear sooner on a light foot, later with it down; down below 1250
-	var v := 0.0 if _walking else absf(_v)   # on foot: the car idles where it was left
-	if _gear > 0:
-		var up_at := 2000.0 + 1700.0 * _throttle_in
-		if v * float(GEAR_RPM[_gear_n - 1]) > up_at and _gear_n < GEAR_RPM.size():
-			_gear_n += 1
-		elif v * float(GEAR_RPM[_gear_n - 1]) < 1250.0 and _gear_n > 1:
-			_gear_n -= 1
-	else:
-		_gear_n = 1
-	var want := maxf(IDLE_RPM, v * float(GEAR_RPM[_gear_n - 1]))
-	if v < 1.5:   # pulling away: the clutch lets the revs rise with the pedal
-		want = maxf(want, IDLE_RPM + 1500.0 * _throttle_in)
-	_rpm = lerpf(_rpm, want, 1.0 - exp(-dt * 7.0))
-	_load = lerpf(_load, _throttle_in, 1.0 - exp(-dt * 6.0))
-	var base := linear_to_db(maxf(0.0001, float(SaveData.data.get("volume_sfx", 0.8))))
-	var pitch := clampf(_rpm / 1200.0, 0.3, 4.0)
-	var rev := clampf((_rpm - IDLE_RPM) / 3500.0, 0.0, 1.0)
-	var eng: AudioStreamPlayer = _engine[0]
-	var load: AudioStreamPlayer = _engine[1]
-	var road: AudioStreamPlayer = _engine[2]
-	var wind: AudioStreamPlayer = _engine[3]
-	var by: AudioStreamPlayer = _engine[4]
-	var city: AudioStreamPlayer = _engine[5]
-	eng.pitch_scale = pitch
-	load.pitch_scale = pitch
-	eng.volume_db = base - 17.0 + 7.0 * rev
-	load.volume_db = base - 38.0 + 26.0 * sqrt(_load)
-	# the tyres' roar and the wind: what speed sounds like (+8 dB a doubling, and brighter;
-	# the wind only at speed, +12 dB a doubling)
-	var sp := clampf(v / 14.0, 0.02, 3.0)
-	road.pitch_scale = 0.8 + 0.3 * clampf(v / 20.0, 0.0, 1.5)
-	road.volume_db = base - 8.0 + 26.0 * log(sp) / log(10.0) if v > 0.2 else -80.0
-	wind.volume_db = base - 23.0 + 40.0 * log(maxf(sp, 0.05)) / log(10.0) if v > 2.0 else -80.0
-	if _wet_k > 0.01 and v > 0.5:   # on a wet road the tyres hiss: brighter, and the spray's shh
-		road.pitch_scale *= 1.0 + 0.25 * _wet_k
-		road.volume_db += 2.0 * _wet_k
-		wind.volume_db = maxf(wind.volume_db, base - 15.0 + 20.0 * log(sp * _wet_k) / log(10.0))
-	city.volume_db = base - (16.0 if _walking else 19.0)
-	if _walking:   # idling behind you, quieter the further you walk
-		eng.volume_db -= 4.0 + _pos.distance_to(_car_at) * 0.9
-		load.volume_db = -80.0
-	# the nearest car going by: its tyres, louder as it nears, the pitch falling as it passes
-	# (how fast it closes on you, from its distance a frame ago)
-	var near := INF
-	var nv := 0.0
-	var nid := 0
-	if _traffic != null:
-		for c in _traffic.cars:
-			if c.alive and c.v > 1.0:
-				var d: float = c.pos.distance_to(_pos)
-				if d < near:
-					near = d
-					nv = c.v
-					nid = c.get_instance_id() if c is Object else hash(c)
-	if nid == _by_id and dt > 0.0 and near < INF and _by_d < INF:
-		_by_closing = lerpf(_by_closing, (_by_d - near) / dt, 1.0 - exp(-dt * 8.0))
-	elif nid != _by_id:
-		_by_closing = 0.0
-	_by_id = nid
-	_by_d = near
-	if near < 60.0:
-		by.pitch_scale = clampf((0.85 + nv / 40.0) / (1.0 - clampf(_by_closing, -60.0, 60.0) / 343.0), 0.5, 2.5)
-		by.volume_db = base - 7.0 - 24.0 * log(maxf(near, 3.0) / 3.0) / log(10.0)
-	else:
-		by.volume_db = -80.0
-
-## ---- the sounds of the street ----------------------------------------------------------------
-## What a walk down a Givatayim street sounds like besides the traffic, made by
-## sounds/make_sounds.py: birds in the trees by day, crickets in the gardens at night,
-## people talking at the cafe, shop or school you are passing, a dog barking a street or two
-## away now and then. Worked out twice a second from where you are -- how many trees round
-## you (a 40 m grid of the trees, counted as they are planted), the nearest place people talk -- and
-## the hour; each eases to its level. In the car they are quieter (the glass, the engine),
-## the more so the faster; on foot they are what you hear. The voices and the dog are where
-## they come from (3D players: they pan as you turn); the birds and crickets are all round.
-const SND_CELL := 40.0
-const TALKY := ["restaurant", "cafe", "fast_food", "bar", "pub", "ice_cream", "school", "kindergarten", "community_centre"]
-var _amb: Array = []                 ## the birds' and the crickets' loops
-var _voices: AudioStreamPlayer3D     ## at the nearest cafe, shop or school
-var _dog: AudioStreamPlayer3D        ## a street or two away, now and then
-var _snd_trees := {}                 ## 40 m cell -> trees in it (counted as each square plants them)
-var _snd_talky := {}                 ## 40 m cell -> places people talk at
-var _amb_t := 0.0
-var _amb_db := [-80.0, -80.0, -80.0] ## where the birds, crickets and voices are easing to (dB)
-var _dog_t := 30.0
-var _amb_rng := RandomNumberGenerator.new()
-
-func _build_street_sounds() -> void:
-	for name: String in ["birds", "crickets"]:
-		var p := AudioStreamPlayer.new()
-		p.stream = load(SND_DIR + name + ".wav")
-		p.volume_db = -80.0
-		add_child(p)
-		_amb.append(p)
-	_voices = AudioStreamPlayer3D.new()
-	_voices.stream = load(SND_DIR + "voices.wav")
-	_voices.volume_db = -80.0
-	_voices.unit_size = 8.0
-	_voices.max_distance = 80.0
-	world.add_child(_voices)
-	_dog = AudioStreamPlayer3D.new()
-	_dog.stream = load(SND_DIR + "dog.wav")
-	_dog.unit_size = 25.0
-	_dog.max_distance = 220.0
-	world.add_child(_dog)
-	_amb_rng.seed = hash(_city_name) + 11
-	var k := 1.0 / float(_city_data.get("scale", 10))
-	for poi: Array in _city_data.get("pois", []):
-		var kind := String(poi[2])
-		if kind in TALKY or kind.begins_with("shop:"):
-			var at := Vector2(poi[0], poi[1]) * k
-			var c := _cell(at, SND_CELL)
-			if not _snd_talky.has(c):
-				_snd_talky[c] = []
-			(_snd_talky[c] as Array).append(at)
-
-func _street_snd_tick(dt: float, off: bool) -> void:
-	if _amb.is_empty():
-		return
-	for p: AudioStreamPlayer in _amb:
-		if off and p.playing:
-			p.stop()
-		elif not off and not p.playing:
-			p.play(_amb_rng.randf_range(0.0, 3.0))
-	if off:
-		if _voices.playing:
-			_voices.stop()
-		if _dog.playing:
-			_dog.stop()
-		return
-	if not _voices.playing:
-		_voices.play()
-	_amb_t -= dt
-	if _amb_t <= 0.0:
-		_amb_t = 0.5
-		var base := linear_to_db(maxf(0.0001, float(SaveData.data.get("volume_sfx", 0.8))))
-		var v := 0.0 if _walking else absf(_v)
-		var hush := 0.0 if _walking else 7.0 + 9.0 * clampf(v / 14.0, 0.0, 1.0)   # (in the car: the glass, the engine)
-		var c := _cell(_pos, SND_CELL)
-		var trees := 0
-		var near := INF
-		var talk := Vector2.INF
-		for dx in range(-1, 2):
-			for dz in range(-1, 2):
-				var cc := c + Vector2i(dx, dz)
-				trees += int(_snd_trees.get(cc, 0))
-				for q: Vector2 in _snd_talky.get(cc, []):
-					if q.distance_to(_pos) < near:
-						near = q.distance_to(_pos)
-						talk = q
-		var green := clampf(float(trees) / 30.0, 0.0, 1.0)
-		# birds by day where there are trees (a dawn-and-dusk chorus: louder in the evening)
-		_amb_db[0] = (base - 25.0 + 9.0 * green + (2.0 if _evening else 0.0) - hush) if (not _night and trees > 0) else -80.0
-		# crickets at night in the gardens, a few starting in the evening
-		_amb_db[1] = (base - 26.0 + 6.0 * green - hush) if _night else ((base - 34.0 - hush) if _evening else -80.0)
-		# people talking at the nearest place they would (fewer at night)
-		if talk != Vector2.INF and near < 70.0:
-			_voices.position = Vector3(talk.x, _h(talk) + 1.4, talk.y)
-			_amb_db[2] = base - 9.0 - hush * 0.8 - (5.0 if _night else 0.0)
-		else:
-			_amb_db[2] = -80.0
-		# a dog, a street or two away, now and then where people live
-		_dog_t -= 0.5
-		if _dog_t <= 0.0:
-			_dog_t = _amb_rng.randf_range(35.0, 100.0)
-			if _liveliness(_pos) > 0.15 and not _dog.playing:
-				var d := Vector2.from_angle(_amb_rng.randf() * TAU) * _amb_rng.randf_range(45.0, 120.0)
-				var at := _pos + d
-				_dog.position = Vector3(at.x, _h(at) + 0.6, at.y)
-				_dog.pitch_scale = _amb_rng.randf_range(0.85, 1.2)
-				_dog.volume_db = base - 4.0 - hush
-				_dog.play()
-	for i in range(2):
-		var p: AudioStreamPlayer = _amb[i]
-		p.volume_db = move_toward(p.volume_db, _amb_db[i], dt * 10.0)
-	_voices.volume_db = move_toward(_voices.volume_db, _amb_db[2], dt * 10.0)
+## In `sounds.gd` (`Sounds`, made once: `_sounds`).
+const Sounds := preload("res://game/streets/sounds.gd")
+var _sounds := Sounds.new(self)
 
 ## ---- people ----------------------------------------------------------------------------------
 
@@ -20110,10 +17774,10 @@ func _spawn_people() -> void:
 		var cs := hash(_city_name) * 31 + i
 		if w["carry"] and not w.has("pram") and posmod(cs, 3) != 0:
 			w["carry"] = false
-			_carry(a, "bag", cs)
+			_carried._carry(a, "bag", cs)
 		elif not w.has("pram") and not w.has("dog"):
-			var wc := _what_carried(cs, w["carry"])
-			_carry(a, wc, cs)
+			var wc := _carried._what_carried(cs, w["carry"])
+			_carried._carry(a, wc, cs)
 			if wc == "" and posmod(cs * 7, 100) < 14 and _people_maker().on():
 				_ppl.phone(a)   # (one walker in seven with nothing in their hands: on their phone)
 		# two walking together, side by side (about four in ten people on a street are with
@@ -20167,9 +17831,9 @@ func _spawn_people() -> void:
 		_set_character(a, PEOPLE[(i + 2) % PEOPLE.size()], _people_rng.randf_range(ADULT_LO, ADULT_HI))
 		_humanize(a, hash(a.get_instance_id()))
 		_people_lod(a)
-		_talker(a, hash(_city_name) * 13 + i)   # (before the clip starts: it may change the clips)
+		_talk._talker(a, hash(_city_name) * 13 + i)   # (before the clip starts: it may change the clips)
 		a.play("Idle", true, _people_rng.randf_range(0.8, 1.1))
-		_carry(a, _what_carried(hash(_city_name) * 13 + i, false), hash(_city_name) * 13 + i)
+		_carried._carry(a, _carried._what_carried(hash(_city_name) * 13 + i, false), hash(_city_name) * 13 + i)
 		a.visible = false
 		_chatters.append({"actor": a, "spot": Vector2.INF})
 	_seat_chatters()
@@ -20184,8 +17848,8 @@ func _spawn_people() -> void:
 			_sitters.append({"actor": a, "spot": Vector2.INF})
 		elif i < SITTERS + WAITERS:
 			a.play("Idle", true, _people_rng.randf_range(0.7, 1.0))
-			var wk := _what_carried(hash(_city_name) * 17 + i, false)
-			_carry(a, wk, hash(_city_name) * 17 + i)
+			var wk := _carried._what_carried(hash(_city_name) * 17 + i, false)
+			_carried._carry(a, wk, hash(_city_name) * 17 + i)
 			if wk == "" and posmod(hash(_city_name) * 17 + i * 3, 100) < 40 and _people_maker().on():
 				_ppl.phone(a)   # (waiting for the bus: many on their phones)
 			_waiters.append({"actor": a, "spot": Vector2.INF})
@@ -21231,11 +18895,11 @@ func _people_tick(dt: float) -> void:
 			var dg: Vector2 = w["dog_at"]
 			if _walking and float(w["bark_cd"]) <= 0.0 and dg.distance_to(_pos) < DOG_BARK_AT:
 				w["bark_cd"] = 15.0
-				if int(w["dog_i"]) % 2 == 0 and _dog != null and not _dog.playing and not Audio.muted():
-					_dog.position = Vector3(dg.x, _h(dg) + 0.4, dg.y)
-					_dog.pitch_scale = 1.15 + 0.1 * float(posmod(int(w["dog_i"]), 3))
-					_dog.volume_db = linear_to_db(maxf(0.0001, float(SaveData.data.get("volume_sfx", 0.8)))) - 2.0
-					_dog.play()
+				if int(w["dog_i"]) % 2 == 0 and _sounds._dog != null and not _sounds._dog.playing and not Audio.muted():
+					_sounds._dog.position = Vector3(dg.x, _h(dg) + 0.4, dg.y)
+					_sounds._dog.pitch_scale = 1.15 + 0.1 * float(posmod(int(w["dog_i"]), 3))
+					_sounds._dog.volume_db = linear_to_db(maxf(0.0001, float(SaveData.data.get("volume_sfx", 0.8)))) - 2.0
+					_sounds._dog.play()
 					Probe.event("dog_barked", {})
 			_people_at.append(w["dog_at"])
 			_people_who.append(-100 - int(w["dog_i"]))
@@ -21633,301 +19297,17 @@ func _humanize(a: Actor3D, seed: int) -> void:
 			nm.albedo_color = pick[role]
 			nm.roughness = 0.85
 			mi.set_surface_override_material(si, nm)
-		_one_piece(mi)
+		_carried._one_piece(mi)
 
 ## ---- hands while talking --------------------------------------------------------------------
-## People standing and talking move their hands: now and then one forearm comes up from the
-## elbow and the hand moves as they make a point, then goes down again; sometimes both. The
-## figures have no clip for it (Idle stands with arms hanging), so this bends the arm bones
-## on top of the pose the animation gave, every frame. (tests/people_talk.gd)
-class Talk extends SkeletonModifier3D:
-	var arms := []      ## [upper arm, forearm] bone indices, left then right
-	var t := 0.0
-	var rate := 1.0     ## how lively: 0.7 slow, 1.3 quick
-	## the axis, in each arm bone's own frame, that brings the hand forward and up, left then
-	## right (measured: about the bone's x alone the hand also swung out to the side, and about
-	## -x behind the back; the same for the upper arm and the forearm)
-	var axes := [Vector3(1, 0, -1).normalized(), Vector3(1, 0, 1).normalized()]
-
-	## how far each arm is up, 0..1, at time t: a gesture of a second or two every few
-	## seconds, one arm (now this one, now the other), sometimes both
-	func _up(side: int) -> float:
-		var cyc := t * 0.3 * rate + float(side) * 0.37
-		var k := floori(cyc)
-		var f := cyc - float(k)
-		var h := posmod(k * 7919 + side * 31 + int(rate * 1000.0), 10)
-		var on := h < (6 if side == 0 else 4)   # (now and then neither: listening)
-		if not on:
-			return 0.0
-		return smoothstep(0.0, 0.18, f) * (1.0 - smoothstep(0.55, 0.75, f))
-
-	func _process_modification_with_delta(delta: float) -> void:
-		var sk := get_skeleton()
-		if sk == null:
-			return
-		t += delta
-		for side in range(arms.size()):
-			var e := _up(side)
-			if e <= 0.001:
-				continue
-			var ua: int = arms[side][0]
-			var fa: int = arms[side][1]
-			# the hand moving as the point is made: a small beat on top
-			var beat := sin(t * (5.0 + float(side)) * rate) * 0.18 + sin(t * 2.3 * rate + float(side)) * 0.1
-			var r1 := Quaternion(axes[side], e * 0.35)
-			var r2 := Quaternion(axes[side], e * (1.15 + beat))
-			sk.set_bone_pose_rotation(ua, sk.get_bone_pose_rotation(ua) * r1)
-			sk.set_bone_pose_rotation(fa, sk.get_bone_pose_rotation(fa) * r2)
-
-## talking hands for someone standing in a group (Talk)
-func _talker(a: Actor3D, seed: int) -> void:
-	if a == null or a.model == null:
-		return
-	var sks := a.model.find_children("*", "Skeleton3D", true, false)
-	if sks.is_empty():
-		return
-	var sk: Skeleton3D = sks[0]
-	if sk.find_bone("UpperArm.L") < 0 and a.anim != null:
-		# people.gd's figures have the library's own talking idle: no bending needed
-		a.anim.remove_animation_library("")
-		a.anim.add_animation_library("", _people_maker()._lib("talk"))
-		return
-	var tk := Talk.new()
-	for sd: String in ["L", "R"]:
-		var u := sk.find_bone("UpperArm." + sd)
-		var f := sk.find_bone("LowerArm." + sd)
-		if u >= 0 and f >= 0:
-			tk.arms.append([u, f])
-	if tk.arms.is_empty():
-		return
-	tk.rate = 0.75 + float(posmod(seed, 50)) / 100.0
-	tk.t = float(posmod(seed * 13, 1000)) / 37.0
-	sk.add_child(tk)
+## In `talk.gd` (`TalkHands`, made once: `_talk`).
+const TalkHands := preload("res://game/streets/talk.gd")
+var _talk := TalkHands.new(self)
 
 ## ---- what people carry -------------------------------------------------------------------------
-## Things in people's hands and on their backs: a shopping bag or a handbag hanging from one
-## hand, a backpack, a box held in front (the carrying walk had arms out round nothing). Each
-## is a few boxes kept at a bone of the figure's skeleton (Held), so it goes with the hand or
-## rides on the back; one mesh (one draw) each, shared, for the few who have one. (tests/people_carry.gd)
-## what someone has: "" (nothing), "bag", "handbag", "backpack", or "box" for the carrying walk
-func _what_carried(seed: int, carrying: bool) -> String:
-	if carrying:
-		return "box"
-	var r := posmod(seed * 2654435761, 1000) / 1000.0
-	return "bag" if r < 0.17 else ("handbag" if r < 0.27 else ("backpack" if r < 0.4 else ""))
-
-var _carry_meshes := {}               ## the boxes' sizes, places and colours -> one mesh, shared
-var _carry_mat: StandardMaterial3D = null
-
-## one thing in one mesh (one draw, not one a box), its colours in the vertices: [size,
-## position, colour] boxes, made once for each different set and shared
-func _carry_mesh(h: Node3D, boxes: Array) -> void:
-	var key := str(boxes)
-	var mesh: ArrayMesh = _carry_meshes.get(key)
-	if mesh == null:
-		var st := SurfaceTool.new()
-		st.begin(Mesh.PRIMITIVE_TRIANGLES)
-		for bx: Array in boxes:
-			var bm := BoxMesh.new()
-			bm.size = bx[0]
-			var arr := bm.get_mesh_arrays()
-			var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
-			var n: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
-			var c: Color = bx[2]   # (as is: converted to linear, as the batched kit's are, they drew darker)
-			for i: int in arr[Mesh.ARRAY_INDEX]:
-				st.set_color(c)
-				st.set_normal(n[i])
-				st.add_vertex(v[i] + (bx[1] as Vector3))
-		mesh = st.commit()
-		_carry_meshes[key] = mesh
-	if _carry_mat == null:
-		_carry_mat = StandardMaterial3D.new()
-		_carry_mat.vertex_color_use_as_albedo = true
-		_carry_mat.roughness = 0.8
-	var mi := MeshInstance3D.new()
-	mi.mesh = mesh
-	mi.material_override = _carry_mat
-	h.add_child(mi)
-
-## Things held, moved to their bones every frame after the animation (and PartSizes) has
-## posed them. A hand's bag hangs straight down from the hand, whatever the arm's swing (on a
-## BoneAttachment3D it tilted with the arm, flat as a sheet of paper); the back's turns with it.
-class Held extends SkeletonModifier3D:
-	var items := []   ## [bone index, holder (a child of the skeleton, in metres), upright]
-
-	func _process_modification_with_delta(_delta: float) -> void:
-		var sk := get_skeleton()
-		if sk == null:
-			return
-		for it: Array in items:
-			var pose := sk.get_bone_global_pose(it[0])
-			var h: Node3D = it[1]
-			var keep := h.scale
-			h.transform = Transform3D(Basis() if it[2] else pose.basis.orthonormalized(), pose.origin)
-			h.scale = keep
-
-## A holder at a bone, in metres (the figure is fitted, i.e. scaled, and a child of the
-## skeleton would take that on); moved there every frame by the skeleton's Held
-func _bone_holder(a: Actor3D, bone: String, upright: bool) -> Node3D:
-	var sks := a.model.find_children("*", "Skeleton3D", true, false)
-	if sks.is_empty():
-		return null
-	var sk: Skeleton3D = sks[0]
-	var bi := sk.find_bone(bone)
-	if bi < 0:
-		bi = sk.find_bone(_people_maker().bone_for(bone))   # (the same place on people.gd's figures)
-	if bi < 0:
-		return null
-	var held: Held = null
-	for m in sk.get_children():
-		if m is Held:
-			held = m
-	if held == null:
-		held = Held.new()
-		sk.add_child(held)   # (after PartSizes: run after it, so the bones are where they are drawn)
-	var s: Vector3 = sk.global_transform.basis.get_scale()
-	var h := Node3D.new()
-	sk.add_child(h)
-	h.scale = Vector3(1.0 / s.x, 1.0 / s.y, 1.0 / s.z)
-	held.items.append([bi, h, upright])
-	return h
-
-func _carry(a: Actor3D, what: String, seed: int) -> void:
-	if what == "" or a == null or a.model == null:
-		return
-	# people.gd's figures: the backpack upright (their chest bone's own axes are not the body's),
-	# the box held by people.gd's Carry
-	var newer := not a.model.find_children("*", "Skeleton3D", true, false).is_empty() 		and (a.model.find_children("*", "Skeleton3D", true, false)[0] as Skeleton3D).find_bone("spine_03") >= 0
-	var ink := Palette.col("ink")
-	var bg := Palette.col("bg")
-	var alt := Palette.col("bg_alt")
-	var wn := Palette.col("warn")
-	var rng := RandomNumberGenerator.new()
-	rng.seed = seed + 991
-	var dark := [bg.lerp(alt, 0.3), _natural(wn.lerp(bg, 0.7), 0.5), _natural(Palette.col("player").lerp(bg, 0.6), 0.5),
-		_natural(Palette.col("hazard").lerp(bg, 0.55), 0.5), ink.lerp(alt, 0.6)]
-	match what:
-		"bag", "handbag":
-			# hanging from the hand (the figure faces +z): flat side to the leg
-			var h := _bone_holder(a, "Fist.L" if rng.randf() < 0.5 else "Fist.R", true)
-			if h == null:
-				return
-			if what == "bag":   # a supermarket's thin white plastic, or a shop's paper or cloth bag
-				var c: Color = [ink.lerp(alt, 0.12), ink.lerp(alt, 0.12), _natural(wn.lerp(ink, 0.45), 0.4),
-					_natural(Palette.col("friend").lerp(bg, 0.4), 0.5)][rng.randi() % 4]
-				var tall: float = [0.3, 0.34, 0.38][rng.randi() % 3]
-				_carry_mesh(h, [[Vector3(0.11, tall, 0.27), Vector3(0, -0.07 - tall * 0.5, 0), c],
-					[Vector3(0.02, 0.07, 0.1), Vector3(0, -0.04, 0), c.darkened(0.1)]])   # (and the handles)
-			else:   # a handbag, its strap in the hand
-				var c: Color = dark[rng.randi() % dark.size()]
-				_carry_mesh(h, [[Vector3(0.1, 0.2, 0.27), Vector3(0, -0.15, 0), c],
-					[Vector3(0.015, 0.06, 0.12), Vector3(0, -0.03, 0), c.darkened(0.3)]])
-		"backpack":
-			var h := _bone_holder(a, "Torso", newer)
-			if h == null:
-				return
-			var c: Color = dark[rng.randi() % dark.size()]
-			var z := -0.13 if newer else -0.165
-			var y := -0.08 if newer else 0.06
-			_carry_mesh(h, [[Vector3(0.3, 0.4, 0.15), Vector3(0, y, z), c],
-				[Vector3(0.24, 0.16, 0.06), Vector3(0, y - 0.1, z - 0.095), c.darkened(0.2)]])   # (and its front pocket)
-		"box":   # a cardboard box on the forearms, the hands under its front
-			if newer:   # (people.gd's: the arms held round it, the box between the hands)
-				if not _ppl.box(a, _natural(wn.lerp(bg, 0.35), 0.55)):
-					return
-				_people_lod(a)
-				return
-			var h := _bone_holder(a, "Torso", false)
-			if h == null:
-				return
-			_carry_mesh(h, [[Vector3(0.42, 0.28, 0.32), Vector3(0, -0.02, 0.36), _natural(wn.lerp(bg, 0.45), 0.55)]])
-	_people_lod(a)
-
-## A person in one piece. The figures are one mesh of six parts (skin, shirt, trousers, belt,
-## face, hair), and each part is a surface of its own: a draw call, and another in the
-## shadow pass, every frame -- 8 people in view were 48 of the 217 draws. Joined into one
-## surface, with each vertex's part in its colour's red, and one material per person whose
-## six colours are what the parts were, a person is one draw. The joined mesh is made once
-## per figure and shared (a mesh per person would be ~0.7 MB each).
-const PIECE_SHADER := """
-shader_type spatial;
-uniform vec4 parts[6];
-uniform float fade_from = 1e6;   // gone past this distance...
-uniform float fade_to = 1e6;     // ...dissolving in, a dither, from here
-void fragment() {
-	int i = clamp(int(COLOR.r * 8.0 + 0.5), 0, 5);
-	ALBEDO = parts[i].rgb;
-	ROUGHNESS = 0.85;
-	float d = length((VIEW_MATRIX * vec4(MODEL_MATRIX[3].xyz, 1.0)).xyz);
-	float keep = clamp((fade_from - d) / max(fade_from - fade_to, 0.001), 0.0, 1.0);
-	if (keep < 0.999 && keep < fract(52.9829189 * fract(dot(FRAGCOORD.xy, vec2(0.06711056, 0.00583715))))) {
-		discard;
-	}
-}
-"""
-var _piece_meshes := {}               ## a figure's mesh -> the same in one surface
-var _piece_shader: Shader = null
-
-func _one_piece(mi: MeshInstance3D) -> void:
-	var src := mi.mesh
-	if src == null or src.get_surface_count() < 2 or src.get_surface_count() > 6 or src.get_blend_shape_count() > 0:
-		return
-	if _piece_shader == null:
-		_piece_shader = Shader.new()
-		_piece_shader.code = PIECE_SHADER
-	var one: ArrayMesh = _piece_meshes.get(src)
-	if one == null:
-		var verts := PackedVector3Array()
-		var nrms := PackedVector3Array()
-		var bones := PackedInt32Array()
-		var wts := PackedFloat32Array()
-		var cols := PackedColorArray()
-		var idx := PackedInt32Array()
-		for si in range(src.get_surface_count()):
-			var arr := src.surface_get_arrays(si)
-			var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
-			var off := verts.size()
-			if arr[Mesh.ARRAY_BONES] == null or (arr[Mesh.ARRAY_BONES] as PackedInt32Array).size() != v.size() * 4:
-				return   # (not the 4-bone skinned figures this is for)
-			verts.append_array(v)
-			nrms.append_array(arr[Mesh.ARRAY_NORMAL])
-			bones.append_array(arr[Mesh.ARRAY_BONES])
-			wts.append_array(arr[Mesh.ARRAY_WEIGHTS])
-			var part := PackedColorArray()
-			part.resize(v.size())
-			part.fill(Color(float(si) / 8.0, 0.0, 0.0))
-			cols.append_array(part)
-			var ix: PackedInt32Array = arr[Mesh.ARRAY_INDEX] if arr[Mesh.ARRAY_INDEX] != null else PackedInt32Array(range(v.size()))
-			for k in ix:
-				idx.append(k + off)
-		var arrays := []
-		arrays.resize(Mesh.ARRAY_MAX)
-		arrays[Mesh.ARRAY_VERTEX] = verts
-		arrays[Mesh.ARRAY_NORMAL] = nrms
-		arrays[Mesh.ARRAY_BONES] = bones
-		arrays[Mesh.ARRAY_WEIGHTS] = wts
-		arrays[Mesh.ARRAY_COLOR] = cols
-		arrays[Mesh.ARRAY_INDEX] = idx
-		one = ArrayMesh.new()
-		one.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-		_piece_meshes[src] = one
-	var m := ShaderMaterial.new()
-	m.shader = _piece_shader
-	m.set_meta("piece", true)
-	var parts: Array[Vector4] = []
-	for si in range(6):
-		var c := Color.WHITE
-		if si < src.get_surface_count():
-			var sm := mi.get_active_material(si) as BaseMaterial3D
-			if sm != null:
-				c = sm.albedo_color
-		c = c.srgb_to_linear()
-		parts.append(Vector4(c.r, c.g, c.b, 1.0))
-	m.set_shader_parameter("parts", parts)
-	for si in range(src.get_surface_count()):
-		mi.set_surface_override_material(si, null)
-	mi.mesh = one
-	mi.set_surface_override_material(0, m)
+## In `carry.gd` (`Carry`, made once: `_carried`).
+const Carry := preload("res://game/streets/carry.gd")
+var _carried := Carry.new(self)
 
 ## ---- people crossing at the zebras -----------------------------------------------------------
 ## A few people at the zebra crossings near the car. They wait at the kerb, and cross once
@@ -23748,7 +21128,7 @@ func _camera(dt: float, p: Vector2, yaw: float) -> void:
 	var back := Vector2(cos(_cam_yaw), sin(_cam_yaw))
 	var spd := clampf(absf(_v) / 30.0, 0.0, 1.0)
 	var want := lerpf(6.3, 7.8, spd)
-	var clear := _clear_behind(p, -back, want)
+	var clear := _head_look._clear_behind(p, -back, want)
 	_cam_dist = clear if clear < _cam_dist else lerpf(_cam_dist, clear, 1.0 - exp(-dt * 1.5))
 	var d := _cam_dist
 	var gp: float = _decks.surf(p, _view_y)   # (the deck it is on, the tunnel's road)
@@ -23756,7 +21136,7 @@ func _camera(dt: float, p: Vector2, yaw: float) -> void:
 	var eye2 := p - back * d
 	var eye := Vector3(eye2.x, maxf(gy + 2.0 + d * 0.14, _decks.surf(eye2, _view_y) + 1.4), eye2.y)
 	eye = _decks.keep_eye(eye, p, _view_y)
-	var ahead := p + back.rotated(-_head_yaw * 0.5) * 4.0   # (a little round to where the driver looks)
+	var ahead := p + back.rotated(-_head_look._head_yaw * 0.5) * 4.0   # (a little round to where the driver looks)
 	var at := Vector3(ahead.x, lerpf(gy, _decks.surf(ahead, _view_y), 0.5) + 1.0, ahead.y)
 	look_from(eye, at)
 	cam.fov = lerpf(54.0, 62.0, spd)   # (was 64-74: ~96-106 across, the street looked small and far)
@@ -23768,9 +21148,9 @@ func _seat_camera(dt: float, yaw: float) -> void:
 	_look_turn = lerpf(_look_turn, clampf(_steer * 0.45, -0.25, 0.25), 1.0 - exp(-dt * 2.0))
 	var xf := _body.global_transform
 	# (the head turned: the eyes a little to that side and back, the view round with it)
-	var head := SEAT + Vector3(sin(_head_yaw * SEAT_HEAD) * 0.06, 0, clampf(-_a_long * 0.004, -0.04, 0.04) - (1.0 - cos(_head_yaw * SEAT_HEAD)) * 0.05)
+	var head := Cockpit.SEAT + Vector3(sin(_head_look._head_yaw * HeadLook.SEAT_HEAD) * 0.06, 0, clampf(-_a_long * 0.004, -0.04, 0.04) - (1.0 - cos(_head_look._head_yaw * HeadLook.SEAT_HEAD)) * 0.05)
 	var eye := xf * head
-	var turn := _look_turn - _head_yaw * SEAT_HEAD
+	var turn := _look_turn - _head_look._head_yaw * HeadLook.SEAT_HEAD
 	var ahead := Vector3(-sin(turn), -0.06, cos(turn)) * 12.0   # +X is the car's left
 	look_from(eye, xf * (head + ahead))
 	cam.fov = lerpf(58.0, 64.0, clampf(absf(_v) / 30.0, 0.0, 1.0))   # (was 72-78: up to 113 across)
@@ -23781,150 +21161,12 @@ func _seat_camera(dt: float, yaw: float) -> void:
 		# (the dial's +X is the driver's left: from -2.2, bottom left as the driver sees it,
 		# clockwise over the top)
 		_dial_speed.basis = Basis(Vector3.RIGHT, 0.32) * Basis(Vector3.BACK, -2.2 + 4.4 * clampf(absf(_v) * 3.6 / 200.0, 0.0, 1.0))
-		_dial_rpm.basis = Basis(Vector3.RIGHT, 0.32) * Basis(Vector3.BACK, -2.2 + 4.4 * clampf(_rpm / 7000.0, 0.0, 1.0))
+		_dial_rpm.basis = Basis(Vector3.RIGHT, 0.32) * Basis(Vector3.BACK, -2.2 + 4.4 * clampf(_sounds._rpm / 7000.0, 0.0, 1.0))
 
 ## ---- the driver's head: looking left and right where a driver would ----------------------
-## Slowing for a junction, a light, a stop or give-way sign: left, right, left again (traffic
-## comes from the left first, driving on the right), once a junction; into a turn as the
-## wheel goes over; at people on the crossing ahead; over the right shoulder reversing.
-## Autodrive's driver always does; yours while "look" is on. The seat view turns with the
-## head, the chase camera swings a little toward it, and the head in the car turns.
-const LOOK_BTN := Rect2(566, 176, 66, 22)    ## looking round while you drive yourself (key G: glance); hidden while autodrive drives or you walk
-const HEAD_RATE := 3.4                       ## rad/s a head turns at, at most
-var _head_yaw := 0.0                         ## where the driver looks: radians left (+) of ahead
-var _head_plan: Array = []                   ## a scan still to do: [[yaw, seconds held], ...]
-var _head_hold := 0.0
-var _head_at := Vector2.INF                  ## where the last scan was (once a junction: its
-var _head_at_t := 0.0                        ## points 10-30 m apart are one) and how long ago
-var _head_check := 0.0
-var _look_on := true                         ## looking round while you drive (autodrive always)
-
-func _head_tick(dt: float) -> void:
-	var want := 0.0
-	_head_at_t += dt
-	if _walking or not (_auto or _look_on):
-		_head_plan = []
-	else:
-		_head_check -= dt
-		# the look left and right: standing or all but, at a junction, a light or a sign,
-		# once a junction. (Rolling below 23 km/h near any junction, it fired again and again
-		# in slow traffic and turned the seat view half round each time.)
-		if _head_check <= 0.0 and _head_plan.is_empty() and absf(_v) < 2.5 and _gear > 0:
-			_head_check = 0.2
-			var j := _junction_ahead_me(16.0)
-			# only first in line and about to go: at a light, once it is green (it looked
-			# left and right at every red, from behind a queue of cars); with a car in front,
-			# not yet -- it looks when it is the one pulling out
-			if j >= 0 and _sig_set.has(j) and _light_at(j, _fwd()) not in ["g", ""]:
-				j = -1
-			if j >= 0 and _car_ahead_me(12.0):
-				j = -1
-			if j >= 0 and (_nodes[j].distance_to(_head_at) > 45.0 or _head_at_t > 20.0):
-				_head_at = _nodes[j]
-				_head_at_t = 0.0
-				_head_plan = [[0.9, 0.5], [-0.9, 0.55], [0.5, 0.3]]
-		if not _head_plan.is_empty():
-			if absf(_v) > 6.0:
-				_head_plan = []   # (off again before it was done: eyes on the road)
-			else:
-				want = float(_head_plan[0][0])
-				if absf(_head_aim - want) < 0.05:
-					_head_hold += dt
-					if _head_hold >= float(_head_plan[0][1]):
-						_head_hold = 0.0
-						_head_plan.pop_front()
-		elif _gear < 0 and absf(_v) > 0.2:
-			want = -1.2   # over the right shoulder, reversing
-		elif _auto and _ap_give_car >= 0 and absf(_v) < 3.0 and _traffic.cars[_ap_give_car].alive:
-			# giving way: at the car it waits for, following it by
-			want = clampf(-_fwd().angle_to(_traffic.cars[_ap_give_car].pos - _pos), -1.2, 1.2)
-		else:
-			# standing for people on the crossing ahead: at one of them, held a moment (the
-			# nearest, chosen afresh every frame, sent the eyes from one to the next)
-			_head_person_t -= dt
-			if absf(_v) < 2.0:
-				if _head_person_t <= 0.0:
-					_head_person = _person_ahead_me(14.0)
-					_head_person_t = 1.5
-				if _head_person != Vector2.INF:
-					want = clampf(-_fwd().angle_to(_head_person - _pos), -1.0, 1.0)
-			else:
-				_head_person = Vector2.INF
-	# eased: the aim moves at a head's pace and the head follows it smoothly. (The steering
-	# was in it too, on top of the seat view's own lead into a turn: every small correction
-	# autodrive made swung the view.)
-	_head_aim = move_toward(_head_aim, want, 2.2 * dt)
-	_head_yaw = lerpf(_head_yaw, _head_aim, 1.0 - exp(-dt * 7.0))
-	if _player_car_mat != null:
-		# the head drawn in the car leans a little into a turn as well (the seat view does
-		# that by itself)
-		_head_steer = lerpf(_head_steer, clampf(-_steer * 0.8, -0.35, 0.35), 1.0 - exp(-dt * 3.0))
-		_player_car_mat.set_shader_parameter("head_turn", _head_yaw + _head_steer)
-
-var _head_aim := 0.0                         ## where the head is heading for (eased toward)
-var _head_person := Vector2.INF              ## the person it is looking at, held a moment
-var _head_person_t := 0.0
-var _head_steer := 0.0                       ## the drawn head's lean into a turn
-const SEAT_HEAD := 0.7                       ## how much of the head's turn the seat view takes
-
-func _toggle_look() -> void:
-	_look_on = not _look_on
-	_show_banner("looking round as you drive: " + ("on" if _look_on else "off"), 1.4)
-	Probe.event("look", {"on": _look_on})
-
-## the next junction (3+ ways) or signalled point on the road ahead within `reach`, or -1
-func _junction_ahead_me(reach: float) -> int:
-	var hit := _nearest_seg(_pos, 12.0, true, true)
-	if hit.is_empty():
-		return -1
-	var r: Dictionary = _roads[hit["road"]]
-	var pts: PackedVector2Array = r["pts"]
-	var ids: PackedInt32Array = r["ids"]
-	var sj: int = hit["seg"]
-	var dir := 1 if (pts[sj + 1] - pts[sj]).dot(_fwd()) >= 0.0 else -1
-	var k := sj + 1 if dir > 0 else sj
-	var d := _pos.distance_to(pts[k])
-	while d <= reach:
-		var n := ids[k]
-		if _node_ways(n) >= 3 or _sig_set.has(n) or _signs.has(n):
-			return n
-		var nk := k + dir
-		if nk < 0 or nk >= pts.size():
-			return -1
-		d += pts[k].distance_to(pts[nk])
-		k = nk
-	return -1
-
-## a car in front within `reach` (on autodrive's planned lane, or straight ahead driving yourself)
-func _car_ahead_me(reach: float) -> bool:
-	var path := _ap_pts if (_auto and _ap_pts.size() >= 2) else PackedVector2Array([_pos, _pos + _fwd() * (reach + 2.0)])
-	var lead: Array = _traffic.lead_on(path, _pos, reach, false)
-	return float(lead[0]) < reach
-
-## the nearest person in front within `reach` (on a crossing, stepping off the kerb)
-func _person_ahead_me(reach: float) -> Vector2:
-	var best := Vector2.INF
-	var bd := reach
-	for q: Vector3 in _people_near(_pos + _fwd() * reach * 0.5, reach * 0.5 + 2.0):
-		var p := Vector2(q.x, q.z)
-		var d := p.distance_to(_pos)
-		if d < bd and (p - _pos).dot(_fwd()) > 2.0:
-			bd = d
-			best = p
-	return best
-
-func _clear_behind(from: Vector2, dir: Vector2, want: float) -> float:
-	if absf(_view_y - _h(from)) > 2.5:
-		return want   # (in a tunnel, on a bridge: the houses round it are not behind the car)
-	var s := 1.0
-	while s <= want + 0.6:
-		var p := from + dir * s
-		for i: int in _near(_bld_hash, p, 0.1, BLD_CELL):
-			var box: Rect2 = _bld_box[i]
-			if box.has_point(p) and Geometry2D.is_point_in_polygon(p, _blds[i]):
-				return maxf(2.2, s - 0.8)
-		s += 0.5
-	return want
+## In `head_look.gd` (`HeadLook`, made once: `_head_look`).
+const HeadLook := preload("res://game/streets/head_look.gd")
+var _head_look := HeadLook.new(self)
 
 ## ---- the view from above: zoom out from where you are, the city paused -------------------
 ## "zoom" (Z, the mouse wheel down, two fingers pinching) lifts the view off the car -- or off
@@ -24219,7 +21461,7 @@ func _zoom_camera(dt: float) -> void:
 	var back := dist * cos(pitch)
 	var up := dist * sin(pitch)
 	if up < 40.0:   # low: not inside the block behind
-		back = minf(back, _clear_behind(c2, -fw, back))
+		back = minf(back, _head_look._clear_behind(c2, -fw, back))
 	var e2 := c2 - fw * back
 	# low over the town: over the roofs round the eye, not in them (up quickly, down gently)
 	var need := 0.0
@@ -28152,7 +25394,7 @@ func _show_banner(msg: String, secs: float) -> void:
 func _tick_hud() -> void:
 	_speed_lbl.text = str(int(round(absf(_v) * 3.6)))
 	# the fps and build lines: in the drawer now, and here only with the perf view up
-	_fps_lbl.visible = _perf_view or _trace_view
+	_fps_lbl.visible = _perf_view or _drive_map._trace_view
 	_ver_lbl.visible = _fps_lbl.visible and not _perf_view   # (the perf view says it on its first line)
 	if is_instance_valid(_load_lbl):   # (and the load line, for its 20 s: it showed through the view's backing)
 		_load_lbl.visible = not _perf_view
@@ -28181,154 +25423,28 @@ func _tick_hud() -> void:
 ## map, then off. PERF_BTN opens the frame times in one tap and closes either.
 
 func _toggle_perf() -> void:
-	if not _perf_view and not _trace_view:
+	if not _perf_view and not _drive_map._trace_view:
 		_perf_view = true
 	elif _perf_view:
 		_perf_view = false
-		_trace_view = true
-		_trace_roads = PackedVector2Array()
+		_drive_map._trace_view = true
+		_drive_map._trace_roads = PackedVector2Array()
 	else:
-		_trace_view = false
+		_drive_map._trace_view = false
 	_perf_lbl.visible = _perf_view
 
 ## ---- the drive map: the last two minutes from the recorder (drivelog.gd), drawn north up --
-## Your track coloured by speed (red standing, green at the limit), autodrive's lane ahead,
-## the other cars' tracks faint, a cross where something was hit, a ring where it was put
-## back on the road, a dot and the seconds where it stood still (not at a light) 3 s or more.
-## "save log" downloads the two minutes as JSON (tests/drive_log_map.py draws one).
-const TRACE_RECT := Rect2(96, 36, 448, 252)
-const TRACE_SAVE := Rect2(452, 262, 84, 20)
-var _trace_view := false
-var _trace_roads := PackedVector2Array()   ## the streets in view, world metres, gathered on opening
-var _trace_box := Rect2()
-
-func _trace_frame() -> Rect2:
-	var box := Rect2(_pos, Vector2.ZERO)
-	for sm: Dictionary in _log.samples:
-		box = box.expand(Vector2(float(sm["x"]), float(sm["z"])))
-	box = box.grow(25.0)
-	var want := TRACE_RECT.size.x / TRACE_RECT.size.y
-	if box.size.x / maxf(box.size.y, 1.0) < want:
-		box = box.grow_individual((box.size.y * want - box.size.x) * 0.5, 0, (box.size.y * want - box.size.x) * 0.5, 0)
-	else:
-		box = box.grow_individual(0, (box.size.x / want - box.size.y) * 0.5, 0, (box.size.x / want - box.size.y) * 0.5)
-	if box.size.x < 150.0:
-		box = box.grow((150.0 - box.size.x) * 0.5)
-	return box
-
-func _draw_trace() -> void:
-	var ink := Palette.col("ink")
-	var bg := Palette.col("bg")
-	_hud.draw_rect(TRACE_RECT, Color(bg, 0.9))
-	if _trace_roads.is_empty():
-		_trace_box = _trace_frame()
-		var seen := {}
-		for code: int in _near(_seg_hash, _trace_box.get_center(), maxf(_trace_box.size.x, _trace_box.size.y) * 0.5, SEG_CELL):
-			if seen.has(code):
-				continue
-			seen[code] = true
-			var r: Dictionary = _roads[code / 4096]
-			if not r["drive"]:
-				continue
-			var pts: PackedVector2Array = r["pts"]
-			_trace_roads.append(pts[code % 4096])
-			_trace_roads.append(pts[code % 4096 + 1])
-	var box := _trace_box
-	var sc := TRACE_RECT.size.x / box.size.x
-	var to := func(p: Vector2) -> Vector2: return TRACE_RECT.position + (p - box.position) * sc
-	var roads := PackedVector2Array()
-	for p: Vector2 in _trace_roads:
-		roads.append(to.call(p))
-	if not roads.is_empty():
-		_hud.draw_multiline(roads, Color(ink, 0.25), maxf(1.0, 7.0 * sc))
-	# the other cars, faint
-	var tracks := {}
-	for sm: Dictionary in _log.samples:
-		for c: Array in sm["cars"]:
-			if not tracks.has(c[0]):
-				tracks[c[0]] = PackedVector2Array()
-			(tracks[c[0]] as PackedVector2Array).append(to.call(Vector2(float(c[2]), float(c[3]))))
-	for id in tracks:
-		var tr: PackedVector2Array = tracks[id]
-		for k in range(1, tr.size()):
-			if tr[k - 1].distance_to(tr[k]) < 25.0 * sc:   # (sent elsewhere: no line across)
-				_hud.draw_line(tr[k - 1], tr[k], Color(ink, 0.3), 1.0)
-	# mine, by speed; and the standstills
-	var prev := Vector2.INF
-	var still := 0.0
-	var still_at := Vector2.ZERO
-	for sm: Dictionary in _log.samples:
-		var q: Vector2 = to.call(Vector2(float(sm["x"]), float(sm["z"])))
-		var v := absf(float(sm["v"]))
-		if prev != Vector2.INF and prev.distance_to(q) < 40.0:
-			var k := clampf(v / 14.0, 0.0, 1.0)
-			_hud.draw_line(prev, q, Palette.col("hazard").lerp(Palette.col("friend"), k), 2.0)
-		prev = q
-		if v < 0.3 and sm["why"] != "light":
-			if still == 0.0:
-				still_at = q
-			still += 1.0 / DriveLog.HZ
-		else:
-			if still >= 3.0:
-				_hud.draw_circle(still_at, 2.5, Palette.col("warn"))
-				_hud.draw_string(_font, still_at + Vector2(3, -3), "%ds" % int(still), HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Palette.col("warn"))
-			still = 0.0
-	# what happened
-	for ev: Array in _log.events:
-		var at := Vector2.INF
-		for sm: Dictionary in _log.samples:
-			if float(sm["t"]) >= float(ev[0]):
-				at = to.call(Vector2(float(sm["x"]), float(sm["z"])))
-				break
-		if at == Vector2.INF:
-			continue
-		match String(ev[1]):
-			"hit":
-				_hud.draw_line(at - Vector2(4, 4), at + Vector2(4, 4), Palette.col("hazard"), 2.0)
-				_hud.draw_line(at - Vector2(4, -4), at + Vector2(4, -4), Palette.col("hazard"), 2.0)
-			"rescue", "unstuck":
-				_hud.draw_arc(at, 6.0, 0.0, TAU, 16, Palette.col("warn"), 1.5)
-			"junction", "pass bus":
-				_hud.draw_circle(at, 2.0, Palette.col("accent"))
-	# autodrive's lane ahead, and the car
-	if _auto and _ap_pts.size() > 1:
-		var lane := PackedVector2Array()
-		var s := 0.0
-		for k in range(_ap_pts.size()):
-			if k > 0:
-				s += _ap_pts[k - 1].distance_to(_ap_pts[k])
-			if s > 80.0:
-				break
-			lane.append(to.call(_ap_pts[k]))
-		_hud.draw_polyline(lane, Color(Palette.col("accent"), 0.9), 1.5)
-	var c: Vector2 = to.call(_pos)
-	var f := _fwd()
-	var sd := Vector2(-f.y, f.x)
-	_hud.draw_colored_polygon(PackedVector2Array([c + f * 7.0, c - f * 4.0 + sd * 4.0, c - f * 4.0 - sd * 4.0]), Palette.col("player"))
-	var metres := 0.0
-	for k in range(1, _log.samples.size()):
-		var a: Dictionary = _log.samples[k - 1]
-		var b: Dictionary = _log.samples[k]
-		metres += Vector2(float(a["x"]), float(a["z"])).distance_to(Vector2(float(b["x"]), float(b["z"])))
-	var why: String = _ap_why if _auto else "(you drive)"
-	_hud.draw_string(_font, TRACE_RECT.position + Vector2(6, 13), "the last %d s, %d m · held by: %s · tap the fps text to close" % [
-		int(_log.samples.size() / DriveLog.HZ), int(metres), why], HORIZONTAL_ALIGNMENT_LEFT, TRACE_RECT.size.x - 12, 9, ink)
-	_hud.draw_rect(TRACE_SAVE, Color(bg, 0.9))
-	_hud.draw_rect(TRACE_SAVE, Color(Palette.col("accent"), 0.9), false, 1.5)
-	_hud.draw_string(_font, TRACE_SAVE.position + Vector2(0, 14), "save log", HORIZONTAL_ALIGNMENT_CENTER, TRACE_SAVE.size.x, 10, Palette.col("accent"))
-
-func _save_log() -> void:
-	var where := _log.save(self)
-	_show_banner(("drive log saved: " + where.get_file()) if where != "" else "could not save the log", 2.5)
-	Probe.event("drive_log", {"file": where})
+## In `drive_map.gd` (`DriveMap`, made once: `_drive_map`).
+const DriveMap := preload("res://game/streets/drive_map.gd")
+var _drive_map := DriveMap.new(self)
 
 func _draw_hud() -> void:
 	if film:
 		return   # (filming: no buttons, no minimap -- see film_mode)
 	var ink := Palette.col("ink")
 	var bg := Palette.col("bg")
-	if _trace_view:
-		_draw_trace()
+	if _drive_map._trace_view:
+		_drive_map._draw_trace()
 	if _perf_view and not _frame_ms.is_empty():
 		# the last frames' times as bars, oldest on the left; 16 and 33 ms marked
 		var box := PERF_GRAPH
@@ -28388,9 +25504,9 @@ func _draw_hud() -> void:
 			_hud_btn(MAP_BTN, "back" if _zoom > 0.0 else "map", Palette.col("friend"), _zoom > 0.0, 11)
 		# (and the quality beside it, of the top level: the user saw it fall on every machine and
 		# could not tell when, 23 Nov)
-		_hud_btn(PERF_BTN, "%d fps %d/%d" % [Engine.get_frames_per_second(), _quality, QUALITY.size() - 1], Palette.col("accent"), _perf_view or _trace_view, 10)
+		_hud_btn(PERF_BTN, "%d fps %d/%d" % [Engine.get_frames_per_second(), _quality, QUALITY.size() - 1], Palette.col("accent"), _perf_view or _drive_map._trace_view, 10)
 		if not _walking and not _auto:
-			_hud_btn(LOOK_BTN, "look", Palette.col("accent"), _look_on, 11)
+			_hud_btn(HeadLook.LOOK_BTN, "look", Palette.col("accent"), _head_look._look_on, 11)
 	# the indicator blinking by the speed, as on a dashboard
 	if _blink != 0 and _blink_lit:
 		var s := float(_blink)
@@ -28433,7 +25549,6 @@ func _draw_hud() -> void:
 	if _paused and not _zoomed() and not _more_open:   # (pause lives in the drawer: the way back out, here)
 		_hud_btn(RESUME_BTN, "resume", Palette.col("warn"), true, 12)
 	_draw_more()
-
 ## ---- the HUD's buttons, the "more" drawer, folding (see AUTO_BTN for the layout) ----------
 
 const RESUME_BTN := Rect2(280, 74, 80, 24)  ## paused by hand: the way back out (pause is in the drawer)
@@ -28492,7 +25607,7 @@ func _next_view() -> void:
 ## back down to the car, the city going on again if it was going before
 ## (not under the perf view's panel, which covers the minimap too)
 func _map_btn_shown() -> bool:
-	return not _hud_folded and not _perf_view and not _trace_view
+	return not _hud_folded and not _perf_view and not _drive_map._trace_view
 
 func _toggle_map() -> void:
 	if _zoom > 0.0:
@@ -28523,7 +25638,7 @@ func _more_rows() -> Array:
 		["autodrive", 142, [["keeps rules", "rules"], ["green wave", "wave"], ["racer", "racer"]], _ap_style, "style"],
 		["steering assist, when you drive", 184, [["off", "off"], ["on", "on"]], "on" if _assist else "off", "assist"],
 		["", 220, [["resume" if _paused else "pause", "pause"], ["keys", "keys"], ["perf view", "perf"]],
-			"pause" if _paused else ("perf" if _perf_view or _trace_view else ""), "act"],
+			"pause" if _paused else ("perf" if _perf_view or _drive_map._trace_view else ""), "act"],
 	]
 
 func _seg_rect(row: Array, i: int) -> Rect2:
@@ -28647,14 +25762,14 @@ func _hud_tap(p: Vector2) -> bool:
 		"map":
 			_toggle_map()
 		"perf":
-			if _perf_view or _trace_view:   # (the drive map too: P and the drawer go round to it)
-				_trace_view = false
+			if _perf_view or _drive_map._trace_view:   # (the drive map too: P and the drawer go round to it)
+				_drive_map._trace_view = false
 				_perf_view = false
 				_perf_lbl.visible = false
 			else:
 				_toggle_perf()
 		"look":
-			_toggle_look()
+			_head_look._toggle_look()
 		_:
 			return false
 	return true
@@ -28681,7 +25796,7 @@ func _hud_buttons() -> Dictionary:
 	if _map_btn_shown():
 		out["map"] = MAP_BTN
 	if not _walking and not _auto:
-		out["look"] = LOOK_BTN
+		out["look"] = HeadLook.LOOK_BTN
 	return out
 
 ## Which button a tap at p is for, "" for none. A mouse must land on it (3 px to spare); a
@@ -28975,7 +26090,7 @@ func _input(event: InputEvent) -> void:
 					_set_cockpit(not _cockpit)
 					return
 				KEY_G:
-					_toggle_look()
+					_head_look._toggle_look()
 					return
 				KEY_Q:
 					_set_blink(0 if _blink == -1 else -1)
@@ -29025,9 +26140,9 @@ func _input(event: InputEvent) -> void:
 				pass
 			elif _perf_view and PERF_RECT.has_point(mb.position):
 				_toggle_perf()
-			elif _trace_view and TRACE_SAVE.grow(3).has_point(mb.position):
-				_save_log()
-			elif _trace_view and TRACE_RECT.has_point(mb.position):
+			elif _drive_map._trace_view and DriveMap.TRACE_SAVE.grow(3).has_point(mb.position):
+				_drive_map._save_log()
+			elif _drive_map._trace_view and DriveMap.TRACE_RECT.has_point(mb.position):
 				pass   # (a tap on the map is not a tap on the road under it)
 			elif _zoomed() and not (_touch_seen and not _paused and mb.position.distance_to(STICK_C) <= STICK_GRAB):
 				_drag = true   # (a thumb on the stick, the city running under you, is driving)
@@ -29042,7 +26157,7 @@ func _input(event: InputEvent) -> void:
 		_touch_seen = true
 		if t.pressed:
 			if _on_hud_button(t.position) \
-					or (_trace_view and TRACE_RECT.has_point(t.position)) \
+					or (_drive_map._trace_view and DriveMap.TRACE_RECT.has_point(t.position)) \
 					or t.position.y < 36.0:
 				return   # the button (via its emulated click) and the shell's menu/sound row
 			if _stick_id < 0 and t.position.distance_to(STICK_C) <= STICK_GRAB and not _paused:

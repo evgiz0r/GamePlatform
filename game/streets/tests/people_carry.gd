@@ -43,7 +43,7 @@ func _run() -> void:
 		g._humanize(a, 4000 + i * 7)
 		g._people_lod(a)
 		var what: String = kinds[i] if i < kinds.size() else ""
-		g._carry(a, what, 500 + i)
+		g._carried._carry(a, what, 500 + i)
 		if i == 6 and g._people_maker().on():
 			g._ppl.phone(a)   # (the last, in the clear: on the phone)
 		if i == 5 and g._people_maker().on():   # (the sixth: a child)

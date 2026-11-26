@@ -15,12 +15,12 @@ func _shot() -> Image:
 func _ab(name: String, eye: Vector3, tgt: Vector3) -> void:
 	g.look_from(eye, tgt)
 	g._sky_follow()
-	g._grass.visible = true
+	g._grass_kit._grass.visible = true
 	g._sky_follow()
 	var on: Image = await _shot()
-	g._grass.visible = false
+	g._grass_kit._grass.visible = false
 	var off: Image = await _shot()
-	g._grass.visible = true
+	g._grass_kit._grass.visible = true
 	on.save_png(OS.get_environment("OUT") + "/grass_%s_on.png" % name)
 	off.save_png(OS.get_environment("OUT") + "/grass_%s_off.png" % name)
 	var changed := 0
@@ -41,7 +41,7 @@ func _run() -> void:
 			if n.get_script() != null and String(n.get_script().resource_path).ends_with("streets.gd"):
 				g = n
 	await create_timer(1.0).timeout
-	if g._grass == null:
+	if g._grass_kit._grass == null:
 		print("no grass (no picture of where it grows)")
 		quit(0)
 		return

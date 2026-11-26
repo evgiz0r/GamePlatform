@@ -126,11 +126,11 @@ func _run() -> void:
 	await _snap("hud_perf")
 	_check_layout("perf view")
 	await _tap(g.PERF_BTN)
-	_ok("and closes it", not g._perf_view and not g._perf_lbl.visible and not g._trace_view)
+	_ok("and closes it", not g._perf_view and not g._perf_lbl.visible and not g._drive_map._trace_view)
 	g._toggle_perf()
 	g._toggle_perf()
 	await _tap(g.PERF_BTN)
-	_ok("the perf button closes the drive map too", not g._perf_view and not g._trace_view)
+	_ok("the perf button closes the drive map too", not g._perf_view and not g._drive_map._trace_view)
 	# the drawer
 	await _tap(g.MORE_BTN)
 	_ok("more opens the drawer", g._more_open)

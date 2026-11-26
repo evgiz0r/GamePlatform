@@ -55,7 +55,7 @@ func _run() -> void:
 		_row("a parked %s: length" % kind, maxf(ab.size.x, ab.size.z), L[0], L[1])
 		_row("a parked %s: width" % kind, minf(ab.size.x, ab.size.z), L[2], L[3])
 		_row("a parked %s: height" % kind, ab.size.y, L[4], L[5])
-	var bus: AABB = g._bus_mesh().get_aabb()
+	var bus: AABB = g._bodies._bus_mesh().get_aabb()
 	_row("a bus: length", maxf(bus.size.x, bus.size.z), 11.5, 12.5)
 	_row("a bus: width", minf(bus.size.x, bus.size.z), 2.45, 2.6)
 	_row("a bus: height", bus.size.y, 3.0, 3.4)
@@ -111,7 +111,7 @@ func _run() -> void:
 	_row("a kerb's height", float(kc["KERB_H"]), 0.12, 0.16)
 	print("---- the eyes")
 	_row("on foot, from the eyes: eye height", 1.64, 1.5, 1.7)
-	_row("in the car, from the seat: eye height", float((kc["SEAT"] as Vector3).y), 1.1, 1.3)
+	_row("in the car, from the seat: eye height", float((g.Cockpit.SEAT as Vector3).y), 1.1, 1.3)
 	var aspect := 16.0 / 9.0
 	# (as set in streets.gd's cameras: keep these in step when they change)
 	for v: Array in [["on foot, behind", 56.0], ["on foot, from the eyes", 58.0], ["driving, slow", 54.0], ["driving, fast", 62.0],

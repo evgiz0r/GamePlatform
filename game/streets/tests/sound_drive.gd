@@ -34,7 +34,7 @@ func _run() -> void:
 	while t < secs:
 		await create_timer(1.0).timeout
 		t += 1.0
-		print("%3d s  %3d km/h  rpm %4d  gear %d" % [int(t), int(absf(g._v) * 3.6), int(g._rpm), g._gear_n])
+		print("%3d s  %3d km/h  rpm %4d  gear %d" % [int(t), int(absf(g._v) * 3.6), int(g._sounds._rpm), g._sounds._gear_n])
 	rec.set_recording_active(false)
 	var w: AudioStreamWAV = rec.get_recording()
 	w.save_to_wav(OS.get_environment("OUT") + "/sound_drive.wav")

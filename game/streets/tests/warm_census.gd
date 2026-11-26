@@ -88,7 +88,12 @@ func _run() -> void:
 			if n.get_script() != null and String(n.get_script().resource_path).ends_with("streets.gd"):
 				g = n
 	await create_timer(1.0).timeout
-	for sc: Script in [g.get_script(), g._furn.get_script()]:
+	var scripts: Array[Script] = [g.get_script(), g._furn.get_script()]
+	for pr: Dictionary in g.get_property_list():   # and the parts split out of streets.gd
+		var o = g.get(pr["name"])
+		if o is RefCounted and (o as RefCounted).get_script() != null and ((o as RefCounted).get_script() as Script).get_script_constant_map().has("Streets"):
+			scripts.append((o as RefCounted).get_script())
+	for sc: Script in scripts:
 		var consts := sc.get_script_constant_map()
 		for k: String in consts:
 			if typeof(consts[k]) == TYPE_STRING and String(consts[k]).contains("shader_type"):

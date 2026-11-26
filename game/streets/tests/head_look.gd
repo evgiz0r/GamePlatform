@@ -57,7 +57,7 @@ func _watch(tag: String) -> void:
 	while t < 14.0:
 		await physics_frame
 		t += dt
-		var h: float = g._head_yaw
+		var h: float = g._head_look._head_yaw
 		if int(t * 60.0) % 30 == 0:
 			line += "%+.0f " % rad_to_deg(h)
 		if h > 0.85 and not shots["left"]:
@@ -98,13 +98,13 @@ func _run() -> void:
 		g._set_cockpit(false)
 		g._set_auto(false)
 		for on: bool in [false, true]:
-			g._look_on = on
-			g._head_at = Vector2.INF
+			g._head_look._look_on = on
+			g._head_look._head_at = Vector2.INF
 			g._land_on_road((b[0] as Vector2) + (b[1] as Vector2) * 33.0, 10.0, b[1])
 			var most := 0.0
 			for _f in range(240):
 				await physics_frame
 				g._v = 0.0
-				most = maxf(most, absf(g._head_yaw))
+				most = maxf(most, absf(g._head_look._head_yaw))
 			print("  driving yourself, look %s, stood before a junction: head turned at most %.0f deg" % ["on" if on else "off", rad_to_deg(most)])
 	quit(0)

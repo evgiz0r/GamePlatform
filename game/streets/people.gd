@@ -623,7 +623,7 @@ func box(a: Actor3D, colour: Color) -> bool:
 	c.box = h
 	a.set_meta("carry", true)
 	# a cardboard box, the hands at its sides near the bottom, a little in front of its middle
-	g._carry_mesh(h, [[Vector3(0.3, 0.26, 0.3), Vector3(0, 0.07, -0.08), colour],
+	g._carried._carry_mesh(h, [[Vector3(0.3, 0.26, 0.3), Vector3(0, 0.07, -0.08), colour],
 		[Vector3(0.06, 0.012, 0.302), Vector3(0, 0.2, -0.08), colour.darkened(0.12)]])   # (and the tape across its top)
 	return true
 
@@ -667,10 +667,10 @@ func phone(a: Actor3D) -> void:
 	for m in sk.get_children():
 		if m is Glance:
 			(m as Glance).curious = false   # (eyes on the screen)
-	var h: Node3D = g._bone_holder(a, "hand_r", true)
+	var h: Node3D = g._carried._bone_holder(a, "hand_r", true)
 	if h == null:
 		return
 	# a dark slab across the palm, its face tipped up toward the eyes
-	g._carry_mesh(h, [[Vector3(0.075, 0.012, 0.15), Vector3(0.02, 0.0, 0.06), g._greyed(Palette.col("bg"), 0.9)],
+	g._carried._carry_mesh(h, [[Vector3(0.075, 0.012, 0.15), Vector3(0.02, 0.0, 0.06), g._greyed(Palette.col("bg"), 0.9)],
 		[Vector3(0.065, 0.002, 0.13), Vector3(0.02, 0.007, 0.06), g._greyed(Palette.col("ink").lerp(Palette.col("player"), 0.3), 0.5)]])   # (its lit screen)
 	a.set_meta("phone", true)

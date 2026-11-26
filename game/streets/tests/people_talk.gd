@@ -35,7 +35,7 @@ func _run() -> void:
 		g.world.add_child(a)
 		a.set_character(g.PEOPLE[i + 1], 1.7)
 		g._humanize(a, 300 + i)
-		g._talker(a, 11 + i * 5)
+		g._talk._talker(a, 11 + i * 5)
 		a.position = base + rt * (0.55 if i == 0 else -0.55)
 		a.play("Idle")
 		a.face(-rt if i == 0 else rt)

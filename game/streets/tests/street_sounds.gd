@@ -19,14 +19,14 @@ func _listen(name: String, secs: float) -> void:
 	while t < secs:
 		await create_timer(2.0).timeout
 		t += 2.0
-		var c: Vector2i = g._cell(g._pos, g.SND_CELL)
+		var c: Vector2i = g._cell(g._pos, g.Sounds.SND_CELL)
 		var trees := 0
 		for dx in range(-1, 2):
 			for dz in range(-1, 2):
-				trees += int(g._snd_trees.get(c + Vector2i(dx, dz), 0))
-		var vp: Vector3 = g._voices.position
+				trees += int(g._sounds._snd_trees.get(c + Vector2i(dx, dz), 0))
+		var vp: Vector3 = g._sounds._voices.position
 		print("%s %2d s: birds %5.1f  crickets %5.1f  voices %5.1f dB at %3d m  dog %s  (trees round: %d)" % [name, int(t),
-			g._amb_db[0], g._amb_db[1], g._amb_db[2], int(Vector2(vp.x, vp.z).distance_to(g._pos)), g._dog.playing, trees])
+			g._sounds._amb_db[0], g._sounds._amb_db[1], g._sounds._amb_db[2], int(Vector2(vp.x, vp.z).distance_to(g._pos)), g._sounds._dog.playing, trees])
 	rec.set_recording_active(false)
 	var w: AudioStreamWAV = rec.get_recording()
 	w.save_to_wav(OS.get_environment("OUT") + "/street_%s.wav" % name)
@@ -41,7 +41,7 @@ func _run() -> void:
 				g = n
 	await create_timer(1.0).timeout
 	g._get_out()
-	g._dog_t = 4.0   # (a bark early, to hear one)
+	g._sounds._dog_t = 4.0   # (a bark early, to hear one)
 	rec = AudioEffectRecord.new()
 	AudioServer.add_bus_effect(0, rec)
 	await _listen("day", 14.0)

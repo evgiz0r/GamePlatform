@@ -84,7 +84,15 @@ func _differs(a: Object, b: Object) -> String:
 	db.erase("decks_baked")
 	if da != db:
 		return "_dressing"
-	for o: String in ["_decks", "_details"]:
+	# the decks, the details, and the parts of the game split out of streets.gd into files of
+	# their own (made by data_tools/split_section.py: `var _x := X.new(self)`, `const Streets`): their state was the game's own
+	var parts: Array[String] = ["_decks", "_details"]
+	for p: Dictionary in a.get_property_list():
+		var o = a.get(p["name"])
+		if int(p["usage"]) & PROPERTY_USAGE_SCRIPT_VARIABLE and o is RefCounted and (o as RefCounted).get_script() != null \
+				and ((o as RefCounted).get_script() as Script).get_script_constant_map().has("Streets") and not parts.has(String(p["name"])):
+			parts.append(String(p["name"]))
+	for o: String in parts:
 		var oa = a.get(o)
 		var ob = b.get(o)
 		if (oa == null) != (ob == null):

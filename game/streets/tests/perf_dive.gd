@@ -79,7 +79,7 @@ func _mat_name(m: Material, gi: GeometryInstance3D) -> String:
 	if m == null:
 		return "?"
 	for pair: Array in [[g._tone_material, "TONE (batched)"], [g._roof_mat, "ROOF"], [g._wall_mat, "WALL"], [g._kerb_mat, "KERB"],
-			[g._ground_shader_mat, "GROUND"], [g._car_shader_mat, "CAR"]]:
+			[g._ground._ground_shader_mat, "GROUND"], [g._car_shader_mat, "CAR"]]:
 		if pair[0] != null and m == pair[0]:
 			return pair[1]
 	if m is ShaderMaterial and (m as ShaderMaterial).shader != null:
@@ -111,7 +111,12 @@ func _run() -> void:
 	await create_timer(1.0).timeout
 	print(g._load_text())
 	# the game's shaders by name: each constant's longest line, looked for in a material's code
-	for sc: Script in [g.get_script(), g._furn.get_script()]:
+	var scripts: Array[Script] = [g.get_script(), g._furn.get_script()]
+	for pr: Dictionary in g.get_property_list():   # and the parts split out of streets.gd
+		var o = g.get(pr["name"])
+		if o is RefCounted and (o as RefCounted).get_script() != null and ((o as RefCounted).get_script() as Script).get_script_constant_map().has("Streets"):
+			scripts.append((o as RefCounted).get_script())
+	for sc: Script in scripts:
 		var consts := sc.get_script_constant_map()
 		for k: String in consts:
 			if typeof(consts[k]) == TYPE_STRING and String(consts[k]).contains("shader_type"):

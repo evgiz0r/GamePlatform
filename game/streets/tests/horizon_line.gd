@@ -33,7 +33,7 @@ func _run() -> void:
 		print("FAIL no walk: is this the walk's level?")
 		quit(1)
 		return
-	g.sky_drop = float(OS.get_environment("DROP")) if OS.get_environment("DROP") != "" else 0.0
+	g._skydome.sky_drop = float(OS.get_environment("DROP")) if OS.get_environment("DROP") != "" else 0.0
 	if OS.get_environment("HEMI") == "1":   # the dome as it was: a hemisphere, its flat bottom on the eye
 		var hm := SphereMesh.new()
 		hm.radius = 1900.0
@@ -41,8 +41,8 @@ func _run() -> void:
 		hm.is_hemisphere = true
 		hm.radial_segments = 32
 		hm.rings = 10
-		hm.material = g._sky_mat
-		g._sky_dome.mesh = hm
+		hm.material = g._skydome._sky_mat
+		g._skydome._sky_dome.mesh = hm
 	var from := float(OS.get_environment("FROM")) if OS.get_environment("FROM") != "" else 34.0
 	var until := float(OS.get_environment("UNTIL")) if OS.get_environment("UNTIL") != "" else 60.0
 	var step := float(OS.get_environment("STEP")) if OS.get_environment("STEP") != "" else 0.25
