@@ -52,7 +52,8 @@ func _run() -> void:
 				continue
 			var inn := pts[1] if end == 0 else pts[pts.size() - 2]
 			joins.append([ri, end, pts[j], (pts[j] - inn).normalized(), ground_r])
-	print("deck_joins: ", joins.size(), " joins of a drivable deck with a ground road; points leveled with an overlapping road: %d (most moved %.2f m)" % [d.leveled, d.leveled_max])
+	print("deck_joins: ", joins.size(), " joins of a drivable deck with a ground road; points leveled with an overlapping road: %d (of them a divided road's lower half raised: %d; most moved %.2f m)" % [d.leveled, d.halves_raised, d.leveled_max])
+	print("deck_joins: divided roads' halves matched in infer(): %d points" % int(g._inferred.get("halves_matched", 0)))
 	_check_drawn(d)
 	_check_ends(d)
 	_check_seams(d)
@@ -213,22 +214,32 @@ func _check_ends(d) -> void:
 ## ground's) at a height 0.15-1.2 m off it -- a step you see from the car, or a slot under
 ## it (a divided road's two halves, lifted by different amounts, overlap at the median).
 ## Every 2 m along both edges; prints the worst places.
+## A seam: a deck's edge 0.15-1.2 m above or below another road's surface beside it. Counted
+## twice: its asphalt edge over the other's lanes (a car drops off it), and its outer edge --
+## shoulder or pavement, under the parapet -- over the other's lanes or shoulder: the concrete
+## edge seen across a divided road (Highway 102 by Meadowview), which the lanes alone missed.
 func _check_seams(d) -> void:
+	for edge: String in ["lanes", "shoulder"]:
+		_check_seams_at(d, edge)
+
+func _check_seams_at(d, edge: String) -> void:
 	var n := 0
 	var total := 0
 	var worst: Array = []
+	var kinds := {}
 	for ri: int in d.decks:
 		var r: Dictionary = g._roads[ri]
 		if not r["drive"]:
 			continue
 		var pts: PackedVector2Array = d._dense(r["pts"], 2.0)
 		for sd: float in [-1.0, 1.0]:
-			var line: PackedVector2Array = g._offset_line(pts, float(r["w"]) * 0.5 * sd)
+			var line: PackedVector2Array = g._offset_line(pts, (float(r["w"]) * 0.5 + (float(r["side"]) if edge == "shoulder" else 0.0)) * sd)
 			for i in range(line.size()):
 				var p := line[i]
 				var y: float = d.deck_y(ri, pts[i])
 				total += 1
 				var dy := 0.0
+				var kind := ""
 				for code: int in g._near(g._seg_hash, p, 8.0, g.SEG_CELL):
 					var rj: int = code / 4096
 					var o: Dictionary = g._roads[rj]
@@ -236,17 +247,25 @@ func _check_seams(d) -> void:
 						continue
 					var op: PackedVector2Array = o["pts"]
 					var sj: int = code % 4096
-					if Geometry2D.get_closest_point_to_segment(p, op[sj], op[sj + 1]).distance_to(p) > float(o["w"]) * 0.5 - 0.2:
+					if Geometry2D.get_closest_point_to_segment(p, op[sj], op[sj + 1]).distance_to(p) > float(o["w"]) * 0.5 - 0.2 + (float(o.get("side", 0.6)) if edge == "shoulder" else 0.0):
 						continue
 					var oy: float = d.seg_y(rj, sj, p) if o.has("ys") else g._h(p)
 					var dd := absf(y - oy)
 					if dd > 0.15 and dd < 1.2:
 						dy = maxf(dy, dd)
+						kind = ("a street on the ground" if not o.has("ys") else ("a tunnel or cutting" if not String(o["deck"]) in ["em", "br"]
+							else ("the other half" if int(o["o"]) != 0 and int(r["o"]) != 0 and d._rank(o) == d._rank(r) else "another deck")))
 				if dy > 0.0:
 					n += 1
+					kinds[kind] = int(kinds.get(kind, 0)) + 1
+					if kind == "the other half" and OS.get_environment("HALVES") != "" and int(kinds[kind]) % 60 == 1:
+						print("  half seam %.2f m at (%d, %d) road %d '%s' %s, its middle at %.2f" % [dy, p.x, p.y, ri, r.get("name", ""), r["deck"], y])
 					worst.append([dy, "%.2f m: road %d '%s' (%s) at (%d, %d)" % [dy, ri, r.get("name", ""), r["deck"], p.x, p.y]])
 	worst.sort_custom(func(a, b): return a[0] > b[0])
-	print("deck_joins: %d of %d deck edge points lie on another road's lanes 0.15-1.2 m above or below it (seams)" % [n, total])
+	if edge == "lanes":
+		print("deck_joins: %d of %d deck edge points lie on another road's lanes 0.15-1.2 m above or below it (seams), by what is under or over: %s" % [n, total, str(kinds)])
+	else:
+		print("deck_joins: %d of %d deck outer edges (shoulder, under the parapet) stand over another road's lanes or shoulder 0.15-1.2 m above or below it (seen edges): %s" % [n, total, str(kinds)])
 	var shown := {}
 	for w: Array in worst:
 		var key := String(w[1]).get_slice("at", 0)
@@ -254,4 +273,4 @@ func _check_seams(d) -> void:
 			break
 		if not shown.has(key):
 			shown[key] = true
-			print("  seam ", w[1])
+			print("  %s " % ("seam" if edge == "lanes" else "seen edge"), w[1])

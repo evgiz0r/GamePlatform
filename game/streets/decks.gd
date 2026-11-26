@@ -102,6 +102,7 @@ func setup() -> void:
 			g._hash_add(_hash, Rect2(pts[j], Vector2.ZERO).expand(pts[j + 1]).grow(float(r["foot"]) + 0.5), CELL, ri * 4096 + j)
 		for v in ys:
 			lowest = minf(lowest, v)
+	_level_halves()
 	_level_overlaps()
 	for ri: int in decks:   # which ends another deck carries on from
 		var r: Dictionary = g._roads[ri]
@@ -241,6 +242,72 @@ func _level_overlaps() -> void:
 				var was := ys[k]
 				ys[k] = clampf(ys[k], ys[prev] - room, ys[prev] + room)
 				easing = ys[k] != was
+		r["ys"] = ys
+
+## A divided road's two halves mapped closer than their widths overlap at the median, and
+## infer() lifted each on its own: across the road one stood up to a metre over the other (a
+## white edge across Highway 102's lanes by Meadowview, most of Bedford's seams). Where a
+## one-way deck's asphalt overlaps or touches (within 0.5 m) another one-way deck's of the
+## same rank running the other way, the lower is raised to the higher (raised, never lowered: a bridge keeps
+## its clearance), and eased back with the holds above.
+var halves_raised := 0
+const HALF_GRADE := 0.03      ## the most a raise adds to a half's grade: it fades to its ends
+func _level_halves() -> void:
+	var raises := {}   # road -> PackedFloat32Array, worked out from the heights as infer() left them
+	for ri: int in decks:
+		var r: Dictionary = g._roads[ri]
+		if not r["drive"] or int(r["o"]) == 0 or not String(r["deck"]) in ["em", "br"]:
+			continue
+		var pts: PackedVector2Array = r["pts"]
+		var ys: PackedFloat32Array = r["ys"]
+		var hw := float(r["w"]) * 0.5
+		var want := PackedFloat32Array()
+		want.resize(pts.size())
+		var any := false
+		for j in range(1, pts.size() - 1):
+			var way := (pts[j + 1] - pts[j - 1]).normalized() * float(r["o"])
+			for code: int in g._near(g._seg_hash, pts[j], hw + 10.0, g.SEG_CELL):
+				var rj: int = code / 4096
+				var o: Dictionary = g._roads[rj]
+				if rj == ri or not o["drive"] or int(o["o"]) == 0 or not o.has("ys") or not String(o["deck"]) in ["em", "br"] \
+						or _rank(o) != _rank(r):
+					continue
+				var op: PackedVector2Array = o["pts"]
+				var sj: int = code % 4096
+				if (op[sj + 1] - op[sj]).normalized().dot(way) * float(o["o"]) > -0.8:
+					continue   # (not running the other way beside it)
+				var q := Geometry2D.get_closest_point_to_segment(pts[j], op[sj], op[sj + 1])
+				if q.distance_to(pts[j]) > float(o["w"]) * 0.5 + hw + float(o["side"]) + float(r["side"]) + 2.0 * WALL_T + 0.5:
+					continue   # (touching counts, shoulders and parapets too: two halves side by side,
+					           # one's shoulder standing over the other's -- Meadowview's white edge)
+				var dy := seg_y(rj, sj, q) - ys[j]
+				if dy > 0.05 and dy <= 1.2:
+					want[j] = maxf(want[j], dy)
+					any = true
+		if any:
+			raises[ri] = want
+	for ri: int in raises:
+		var r: Dictionary = g._roads[ri]
+		var pts: PackedVector2Array = r["pts"]
+		var ys: PackedFloat32Array = r["ys"]
+		var want: PackedFloat32Array = raises[ri]
+		var cum := PackedFloat32Array([0.0])
+		for j in range(1, pts.size()):
+			cum.append(cum[j - 1] + pts[j - 1].distance_to(pts[j]))
+		var length := cum[cum.size() - 1]
+		for k in range(1, pts.size() - 1):
+			# the most any point's wish reaches here, losing HALF_GRADE a metre, and never more
+			# than that from either end (an end stays where it is: on the ground, or level with
+			# the deck carrying on from it)
+			var d := 0.0
+			for j in range(pts.size()):
+				if want[j] > 0.0:
+					d = maxf(d, want[j] - HALF_GRADE * absf(cum[j] - cum[k]))
+			d = minf(d, HALF_GRADE * minf(cum[k], length - cum[k]))
+			if d > 0.01:
+				ys[k] += d
+				halves_raised += 1
+				leveled_max = maxf(leveled_max, d)
 		r["ys"] = ys
 
 ## node n is on some road other than ri that is not a deck
@@ -1019,7 +1086,7 @@ func build() -> void:
 					g._on_deck = -1
 		match String(r["deck"]):
 			"br", "em":
-				_raised(ri, pts, walk, kerb, conc, stone, grass, rail)
+				_raised(ri, pts, walk, kerb, conc, stone, grass, rail, asphalt)
 			"cu":
 				_cutting(ri, pts, conc, rail)
 			"tu":
@@ -1134,7 +1201,7 @@ func _shifted(line: PackedVector3Array, dy: float) -> PackedVector3Array:
 ## A bridge or an embankment: the pavement (or a shoulder) each side, the parapets, and under
 ## it a slab on piers (a bridge) or retaining walls down to the ground (an embankment).
 func _raised(ri: int, pts: PackedVector2Array, walk: RefCounted, kerb: RefCounted, conc: RefCounted, stone: RefCounted,
-		grass: RefCounted, rail: RefCounted) -> void:
+		grass: RefCounted, rail: RefCounted, asphalt: RefCounted = null) -> void:
 	var r: Dictionary = g._roads[ri]
 	var hw := float(r["w"]) * 0.5
 	var side := float(r["side"])
@@ -1152,6 +1219,7 @@ func _raised(ri: int, pts: PackedVector2Array, walk: RefCounted, kerb: RefCounte
 		# with the drop beside it (at the foot of the ramp it is nothing)
 		var p_in := PackedVector3Array()
 		var p_out := PackedVector3Array()
+		var flat := PackedByteArray()   # (no parapet there: its top would lie on the ground)
 		var foot := PackedVector3Array()
 		var under := PackedVector3Array()
 		var outs0 := _outs(pts, sd)
@@ -1164,6 +1232,7 @@ func _raised(ri: int, pts: PackedVector2Array, walk: RefCounted, kerb: RefCounte
 			var drop: float = vo.y - top - maxf((outer[1] as PackedFloat32Array)[i],
 					beside(ri, Vector2(vo.x, vo.z) + outs0[i] * 0.5, vo.y - top) + (g.road_top() - g.Y_ROAD))
 			var ph := 0.0 if railed else (PARAPET if bridge else PARAPET * clampf((drop - 0.15) / 0.6, 0.0, 1.0))
+			flat.append(1 if ph < 0.05 and not railed else 0)
 			p_in.append(vi + Vector3(0, ph, 0))
 			p_out.append(vo + Vector3(0, ph, 0))
 			foot.append(Vector3(vo.x, (outer[1] as PackedFloat32Array)[i] - 0.4, vo.z))
@@ -1217,9 +1286,17 @@ func _raised(ri: int, pts: PackedVector2Array, walk: RefCounted, kerb: RefCounte
 					drawn.append([wall_line[i], wall_line[i + 1], tops[i].y, tops[i + 1].y, "railing" if railed else ("parapet" if bridge else "wall"), ri, sd, i])
 		if paved:
 			_face(kerb, kerb_in[0], kerb_top[0], -sd, line, gap_walk)
-		_strip(walk if paved else conc, kerb_top[0], inner[0], true, gap_walk)
-		_face(conc, inner[0], p_in, -sd, line, gap_w)              # the parapet's inner face
-		_strip(conc, p_in, p_out, true, gap_w)                     # its top
+		# (a carriageway's shoulder is asphalt, not concrete; and where the parapet has grown
+		# to nothing -- the foot of an embankment -- its top is not drawn: there the two lay
+		# flat on the ground as a white band a metre wide, starting where the road left the
+		# ground and seen across the road: Highway 102 by Meadowview)
+		var gap_top := gap_w.duplicate()
+		for i in range(pts.size()):
+			if flat[i] == 1 and (i == 0 or flat[i - 1] == 1) and (i == pts.size() - 1 or flat[i + 1] == 1):
+				gap_top[i] = 1
+		_strip(walk if paved else (asphalt if r["drive"] and asphalt != null else conc), kerb_top[0], inner[0], true, gap_walk)
+		_face(conc, inner[0], p_in, -sd, line, gap_top)            # the parapet's inner face
+		_strip(conc, p_in, p_out, true, gap_top)                   # its top
 		if bridge:
 			_face(conc, p_out, under, sd, line, gap_w)             # the slab's edge and the parapet's outside
 		else:
@@ -1564,6 +1641,86 @@ static func _hgt(hg: Dictionary, p: Vector2, k: float) -> float:
 	var h11 := float(hh[r + nx + 1])
 	return (h11 + (float(hh[r + nx]) - h11) * (1.0 - ax) + (float(hh[r + 1]) - h11) * (1.0 - az)) * k
 
+## the two halves of a divided road at one height (infer, above): returns [points raised, them]
+const HALF_STEP := 1.5      ## halves further apart than this in height are not one road's
+static func _match_halves(roads: Array, pos: Callable, ground: Callable, lift: Dictionary, pinned: Dictionary,
+		frozen: Dictionary, drv: Callable) -> Array:
+	var half_w := func(r: Dictionary) -> float:
+		var w := float(r.get("w", 7.0))
+		var lanes := int(r.get("l", 0)) if int(r.get("l", 0)) > 0 else maxi(1, roundi(w / 3.5))
+		return minf(w, lanes * 3.3 + 0.5) * 0.5
+	var cell := 32.0
+	var grid := {}
+	var ones: Array = []
+	for ri in range(roads.size()):
+		var r: Dictionary = roads[ri]
+		if int(r.get("o", 0)) == 0 or not drv.call(r) or String(r["k"]) == "service" or r.has("tu"):
+			continue
+		ones.append(ri)
+		var ns: Array = r["n"]
+		var lifted := false
+		for n in ns:
+			lifted = lifted or float(lift.get(int(n), 0.0)) > 0.05
+		if not lifted:
+			continue   # (only a lifted half lifts the other)
+		for j in range(ns.size() - 1):
+			var a: Vector2 = pos.call(int(ns[j]))
+			var b: Vector2 = pos.call(int(ns[j + 1]))
+			for cx in range(floori(minf(a.x, b.x) / cell) - 1, floori(maxf(a.x, b.x) / cell) + 2):
+				for cz in range(floori(minf(a.y, b.y) / cell) - 1, floori(maxf(a.y, b.y) / cell) + 2):
+					var key := Vector2i(cx, cz)
+					if not grid.has(key):
+						grid[key] = []
+					(grid[key] as Array).append(ri * 4096 + j)
+	var raised := {}
+	for _round in range(3):   # (a raised half can lift a third piece beside it: rare)
+		var any := false
+		for ri: int in ones:
+			var r: Dictionary = roads[ri]
+			var ns: Array = r["n"]
+			var hw: float = half_w.call(r)
+			var rank := int(MAIN_LINE.get(String(r["k"]), 0))
+			var link := String(r["k"]).ends_with("_link")
+			for j in range(ns.size()):
+				var n := int(ns[j])
+				if pinned.has(n) or frozen.has(n):
+					continue
+				var p: Vector2 = pos.call(n)
+				var way: Vector2 = ((pos.call(int(ns[mini(j + 1, ns.size() - 1)])) as Vector2) - pos.call(int(ns[maxi(j - 1, 0)]))).normalized() * float(r["o"])
+				var mine := float(ground.call(n)) + float(lift.get(n, 0.0))
+				var want := mine
+				for code: int in grid.get(Vector2i(floori(p.x / cell), floori(p.y / cell)), []):
+					var rj := code / 4096
+					if rj == ri:
+						continue
+					var o: Dictionary = roads[rj]
+					if int(MAIN_LINE.get(String(o["k"]), 0)) != rank or String(o["k"]).ends_with("_link") != link:
+						continue
+					var ms: Array = o["n"]
+					var sj := code % 4096
+					var m0 := int(ms[sj])
+					var m1 := int(ms[sj + 1])
+					if n == m0 or n == m1:
+						continue
+					var a: Vector2 = pos.call(m0)
+					var b: Vector2 = pos.call(m1)
+					if (b - a).normalized().dot(way) * float(o["o"]) > -0.8:
+						continue   # (not running the other way beside it)
+					var q := Geometry2D.get_closest_point_to_segment(p, a, b)
+					if q.distance_to(p) > hw + float(half_w.call(o)) + 3.0:
+						continue   # (lanes apart by more than both shoulders and parapets)
+					var t := a.distance_to(q) / maxf(a.distance_to(b), 0.001)
+					var y := lerpf(float(ground.call(m0)) + float(lift.get(m0, 0.0)), float(ground.call(m1)) + float(lift.get(m1, 0.0)), t)
+					if y > want and y - mine <= HALF_STEP and lerpf(float(lift.get(m0, 0.0)), float(lift.get(m1, 0.0)), t) > 0.05:
+						want = y
+				if want > mine + 0.05:
+					lift[n] = want - float(ground.call(n))
+					raised[n] = true
+					any = true
+		if not any:
+			break
+	return [raised.size(), raised.keys()]
+
 ## the city file's data, edited in place; returns what it did (for the report)
 static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 	var hg: Dictionary = data.get("height", {})
@@ -1878,6 +2035,17 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 		if float(lift[n]) > room + 0.01:
 			lift[n] = maxf(room, 0.0)
 			capped += 1
+	# A divided road's two halves -- one-way ways of the same class running opposite ways
+	# side by side -- were lifted each on its own, from its own crossings: across the median
+	# one stood up to a metre over the other, a concrete edge seen across the road (Highway
+	# 102 by Meadowview). Each point of the lower is raised to the other half's surface beside
+	# it, and the raise spread from there at a ramp's grade like any lift, along whatever ways
+	# carry on: done here, per node, before the roads are cut into decks, so the pieces' ends
+	# move with it. (Done afterwards in setup(), with each piece's ends held, it faded out
+	# exactly where the edge showed.) Raised, never lowered: a bridge keeps its clearance.
+	var halves_matched := _match_halves(roads, pos, ground, lift, pinned, frozen, drv)
+	if not (halves_matched[1] as Array).is_empty():
+		spread.call(halves_matched[1], frozen)
 	# Footbridges over streets, now the streets' heights are known: each clears the street's
 	# surface under it (a ramp's, an embankment's), not just the ground, and its paths' ramps
 	# are spread again from there.
@@ -2311,7 +2479,7 @@ static func infer(data: Dictionary, drive: Dictionary) -> Dictionary:
 		fb += 1 if walk.call(roads[ri]) else 0
 	for ri: int in is_tu:
 		ft += 1 if walk.call(roads[ri]) else 0
-	return {"bridges": is_br.size() - fb, "footbridges": fb, "footbridges_raised": raised.size(), "stair_capped": stair_capped, "tunnels": is_tu.size() - ft, "foot_tunnels": ft, "crossings": crossed, "stacked": stacked, "capped": capped, "decks": decks,
+	return {"bridges": is_br.size() - fb, "footbridges": fb, "footbridges_raised": raised.size(), "stair_capped": stair_capped, "tunnels": is_tu.size() - ft, "foot_tunnels": ft, "crossings": crossed, "stacked": stacked, "capped": capped, "halves_matched": halves_matched[0], "decks": decks,
 		"over_roads": over_roads.size(), "short_of_clear": short, "lowest_over_road": snappedf(low, 0.1), "short_at": short_at, "tunnels_dropped": dropped,
 		"crests_rounded": rounded[0], "cutting_tops_eased": rounded[1]}
 

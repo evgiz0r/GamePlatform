@@ -668,7 +668,9 @@ func _stand_by(i: int) -> Vector2:
 	var r: Rect2 = items[i]["rect"]
 	var f := _front(i)
 	var half := absf(f.x) * r.size.x / 2.0 + absf(f.y) * r.size.y / 2.0
-	var p := r.get_center() + f * (half + 1.0)
+	# far enough back to see the whole of it: a wardrobe from 1 m filled the view
+	var wide := absf(f.y) * r.size.x + absf(f.x) * r.size.y
+	var p := r.get_center() + f * (half + clampf(0.9 + wide * 0.45, 1.1, 2.0))
 	# not out of its room: step back towards it until inside
 	for k in 8:
 		if _room_at(p).get("kind", "") != "":
@@ -715,9 +717,39 @@ func _head(delta: float) -> void:
 			else:
 				_glanced[_glance] = _tour_clock
 				_glance = -1
+	_caption(_tour[0]["look_at"] if touring and _tour[0] is Dictionary and _tour[0].has("look_at") \
+		else (_glance if touring else -1))
 	var k := 1.0 - exp(-delta * 3.0)
 	_head_yaw = lerpf(_head_yaw, want_y, k)
 	_head_pitch = lerpf(_head_pitch, want_p, k)
+
+## What the eyes are on, in words, low in the middle of the view.
+const SAY := {"tv_unit": "the TV", "bed_double": "the double bed", "bed_single": "a bed",
+	"sofa": "the sofa", "sofa_bed": "the sofa bed", "dining_table": "the dining table",
+	"counter": "the kitchen counter", "bathtub": "the bathtub", "wardrobe": "the wardrobe",
+	"desk": "the desk", "shower": "the shower", "fridge": "the fridge",
+	"table_round": "the balcony table", "sink": "the sink", "lounger": "a sun lounger",
+	"plant": "a plant", "shelves": "the shelves", "washer": "the washing machine",
+	"toilet": "the toilet", "coffee_table": "the coffee table", "shoe_cabinet": "the shoe cabinet",
+	"nightstand": "the nightstand"}
+var _look_label: Label
+var _said := -2
+
+func _caption(i: int) -> void:
+	if _look_label == null:
+		_look_label = Label.new()
+		_look_label.position = Vector2(0, 300)
+		_look_label.size = Vector2(640, 24)
+		_look_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_look_label.add_theme_font_size_override("font_size", 16)
+		_look_label.add_theme_color_override("font_color", Color(1, 1, 1))
+		_look_label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+		_look_label.add_theme_constant_override("outline_size", 5)
+		add_child(_look_label)
+	if i == _said:
+		return
+	_said = i
+	_look_label.text = ("looking at " + SAY.get(items[i]["name"], items[i]["name"])) if i >= 0 else ""
 
 ## Yaw and pitch from the eye to a piece's middle.
 func _aim(i: int) -> Vector2:
@@ -890,8 +922,7 @@ var _film_t := 0.0
 func film_ready() -> bool:
 	if _loaded and not _filming:
 		_filming = true
-		_doll = true
-		get_tree().create_timer(4.0).timeout.connect(func(): _doll = false)
+		_doll = false   # eye level from the first frame to the last (Evgeni: "not from the top")
 		_start_tour()
 	return _loaded
 

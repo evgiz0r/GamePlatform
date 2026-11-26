@@ -2945,6 +2945,30 @@ it is dropped.
   - **Wall stubs**: the bank started at 0.4 m of drop, and below it the wall did, so the foot
     of every bank had a low wall 2-3 m long standing alone. Banks now start at 0.15 m
     (`BANK_FROM`): Bedford's lone short runs 98 -> 54.
+  - **Round 3 (same day): a divided road's halves.** `_level_halves()` (setup, before
+    `_level_overlaps`) finds one-way embankment/bridge pieces of the same rank running the other
+    way that overlap or touch, and raises the lower one toward the other (0.05-1.2 m apart),
+    smoothed: the raise at each point is the largest wanted raise less `HALF_GRADE` (3%) per
+    metre away, and never more than 3% of the distance to the piece's nearest end, so the
+    ends stay where the joins put them. A first point-by-point raise left 16-22% kinks at the
+    Bedford Bypass bridge ends. Bedford seams 2630 -> 2437 (770 points raised, most 1.1 m);
+    all bridge drives in Bedford and Ashdod clean. **Not fixed**: the white edge across
+    Highway 102 by Meadowview is unchanged -- those halves are cut into short pieces, and
+    the fade to each piece's fixed ends leaves the difference where it shows.
+  - **Round 4 (same day): the white band was never a height step.** `_match_halves()` in
+    `infer()` now gives the halves the same heights per node before the roads are cut (each
+    point of the lower raised to the other's surface beside it, within `HALF_STEP` 1.5 m, then
+    spread at ramp grade like any lift): Bedford 69 points, Ashdod 8 -- small, since infer's
+    shared crossings already lift most halves alike. Seen from 30 m up, Meadowview's line was
+    the embankment's *concrete shoulder plus the parapet's top lying flat on the ground*
+    where the parapet had grown to nothing at the deck's foot: a white band a metre wide,
+    starting where the road leaves the ground. Now a carriageway deck's shoulder is drawn in
+    asphalt and the parapet's top is left out where it is flat (`gap_top` in `_raised`).
+    Lesson: look from above before blaming heights -- a flat strip of a light material
+    reads as a step from a low eye. `deck_joins` now also counts *seen edges* (the outer
+    edge, shoulder included, over another road's lanes or shoulder): Bedford 3465 of 16398,
+    Ashdod 1488 of 11776 -- the halves' overlapping shoulders, mostly harmless now they are
+    asphalt; a lead for the next look, not a target.
 - **Still to do**: grass slopes for cuttings too (they are walled); a
   long-span bridge's height over water (the MacKay's deck is only as high as its ends);
   pavements at street level beside a cutting (the underpass has none); people on a bridge's
