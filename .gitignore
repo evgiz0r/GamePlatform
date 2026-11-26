@@ -6,3 +6,4 @@ tools/.cache/
 __pycache__/
 game/*/baked/
 game/streets/tests/.private_places.json
+lab/*/out/
