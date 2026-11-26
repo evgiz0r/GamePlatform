@@ -498,6 +498,9 @@ func build() -> void:
 	t = _timed("ads", t)
 	await fences()
 	t = _timed("fences, hedges, railings", t)
+	if not med:
+		await back_gardens()
+		t = _timed("back gardens", t)
 	await kerbside()   # (before the racks and scooters: they keep clear of these)
 	t = _timed("kerbside (bollards, hydrants, bins, cabinets, recycling)", t)
 	if med:
@@ -2800,3 +2803,169 @@ func _scooter_kit() -> ArrayMesh:
 	_box(b, Vector3(0, 1.08, 0.6), Vector3(0.22, 0.1, 0.1), body)                # the headlamp
 	_box(b, Vector3(0, 0.62, -0.75), Vector3(0.3, 0.12, 0.1), Palette.col("hazard"))   # tail light
 	return _mesh(b)
+
+## ---- back gardens (Bedford) --------------------------------------------------------------------
+## A North American suburb's houses have a closed garden behind (the user, 26 Nov 2026, on
+## Fleetview Drive: "houses ... have some kind of closed gardens on the back"). OSM maps almost
+## none of these fences, so they are made: for each detached house the street side is its
+## front (the nearest street), the back runs out from the rear wall along the house's own
+## axis, as deep as it is clear (no road, no building, no neighbour's garden), and a 1.8 m
+## board fence closes it: two sides, the rear, and short returns to the house's back corners.
+## The yards placed so far are kept (_yards, by cell) so back-to-back and side-by-side gardens
+## stop at each other's fence instead of crossing it.
+const YARD_CELL := 40.0
+var _yards := {}             ## cell -> the garden outlines there (PackedVector2Array)
+func _yard_clash(poly: PackedVector2Array) -> bool:
+	var box := Rect2(poly[0], Vector2.ZERO)
+	for p in poly:
+		box = box.expand(p)
+	var seen := {}
+	for cx in range(int(floor(box.position.x / YARD_CELL)), int(floor(box.end.x / YARD_CELL)) + 1):
+		for cy in range(int(floor(box.position.y / YARD_CELL)), int(floor(box.end.y / YARD_CELL)) + 1):
+			for o in _yards.get(Vector2i(cx, cy), []):
+				if seen.has(o):
+					continue
+				seen[o] = true
+				for cut: PackedVector2Array in Geometry2D.intersect_polygons(poly, o):
+					if absf(g._area(cut)) > 1.0:
+						return true
+	return false
+
+func _yard_keep(poly: PackedVector2Array) -> void:
+	var box := Rect2(poly[0], Vector2.ZERO)
+	for p in poly:
+		box = box.expand(p)
+	for cx in range(int(floor(box.position.x / YARD_CELL)), int(floor(box.end.x / YARD_CELL)) + 1):
+		for cy in range(int(floor(box.position.y / YARD_CELL)), int(floor(box.end.y / YARD_CELL)) + 1):
+			var k := Vector2i(cx, cy)
+			if not _yards.has(k):
+				_yards[k] = []
+			(_yards[k] as Array).append(poly)
+
+func back_gardens() -> void:
+	var boards = g.new_cbuf(CELL)   # (not clipped: a house's garden is built by its own square, whole)
+	var all: Array = g._city_data["buildings"]
+	var wood := _tone("woodfence")
+	var n_yards := 0
+	var metres := 0.0
+	for bi: int in g._tile_blds.get(g._tile, []):
+		if g._over():
+			await g._pause()
+		var bd: Dictionary = all[bi]
+		if not bd.has("_ring") or bi >= g._bld_kind.size() or g._bld_kind[bi] != 2 or bd.has("shops"):
+			continue
+		var ring: PackedVector2Array = bd["_ring"]
+		var area := absf(g._area(ring))
+		if area < 80.0 or area > 450.0:
+			continue   # (a shed or a garage has no garden of its own; a big one is not a house)
+		if _rnd(Vector2i(ring[0].round()) + Vector2i(7, 3)) < 0.15:
+			continue   # some leave theirs open
+		var c := Vector2.ZERO
+		for p in ring:
+			c += p
+		c /= ring.size()
+		var hit: Dictionary = g._nearest_seg(c, 45.0, true, true)
+		if hit.is_empty():
+			continue   # no street to face: no telling which way is back
+		var away: Vector2 = (c - (hit["q"] as Vector2)).normalized()
+		# the house's own axes (its longest wall), the back the one most away from the street
+		var d := Vector2.RIGHT
+		var best := 0.0
+		for i in range(ring.size()):
+			var ed := ring[(i + 1) % ring.size()] - ring[i]
+			if ed.length() > best:
+				best = ed.length()
+				d = ed.normalized()
+		var back := d
+		for cand: Vector2 in [d, -d, d.orthogonal(), -d.orthogonal()]:
+			if cand.dot(away) > back.dot(away):
+				back = cand
+		var side := back.orthogonal()
+		var t1 := -INF
+		var t0 := INF
+		var s0 := INF
+		var s1 := -INF
+		for p in ring:
+			var q := p - c
+			t1 = maxf(t1, q.dot(back))
+			t0 = minf(t0, q.dot(back))
+			s0 = minf(s0, q.dot(side))
+			s1 = maxf(s1, q.dot(side))
+		var tj := t1 - minf(2.5, (t1 - t0) * 0.35)   # where the side fences meet the house
+		var P := func(s: float, t: float) -> Vector2: return c + side * s + back * t
+		var got := 0.0
+		var poly := PackedVector2Array()
+		var sa := s0 - 1.2
+		var sb := s1 + 1.2
+		for D: float in [14.0, 11.0, 8.0, 6.0]:
+			var te := t1 + D
+			var ok := true
+			for q: Vector2 in [P.call(sa, te), P.call(sb, te), P.call((sa + sb) * 0.5, te), P.call(sa, (t1 + te) * 0.5), P.call(sb, (t1 + te) * 0.5)]:
+				if not _clear_at(q, true, 0.5):
+					ok = false
+					break
+			if not ok:
+				continue
+			poly = PackedVector2Array([P.call(sa, tj), P.call(sb, tj), P.call(sb, te), P.call(sa, te)])
+			if _yard_clash(poly):
+				poly = PackedVector2Array()
+				continue
+			got = D
+			break
+		if got == 0.0:
+			continue
+		_yard_keep(poly)
+		n_yards += 1
+		# weathered cedar boards, a lighter or darker stain per house; one in four white vinyl
+		# (wood's own tone came out near black in the shade: vertex colours want it lighter)
+		var pick := _rnd(bi)
+		var col := wood.lightened(0.78) if pick < 0.25 else wood.lightened(0.3 + 0.25 * (pick - 0.25) / 0.75)
+		var te := t1 + got
+		for line: Array in [[P.call(s0 + 0.2, tj), P.call(sa, tj)], [P.call(sa, tj), P.call(sa, te)], [P.call(sa, te), P.call(sb, te)],
+				[P.call(sb, te), P.call(sb, tj)], [P.call(sb, tj), P.call(s1 - 0.2, tj)]]:
+			metres += _board_line(boards, line[0], line[1], 1.8, col)
+		if g._mine(c):
+			_mark("back garden", c)
+	if OS.get_environment("NO_YARDS") == "":   # (tests/back_gardens.gd's "before": laid out, not shown)
+		g._add_mesh(boards, g._vc_mat(), false, FENCE_SEEN * 0.8)
+	_count["back_gardens"] = int(_count.get("back_gardens", 0)) + n_yards
+	_count["garden_fence_m"] = int(_count.get("garden_fence_m", 0)) + int(metres)
+
+## a solid board fence H high from a to e (a privacy fence's flat face, both sides drawn: one
+## thin box a piece), a square post every piece of about 2.4 m, solid to the car and people
+func _board_line(buf, a: Vector2, e: Vector2, H: float, col: Color) -> float:
+	var done := 0.0
+	var n_piece := 0
+	for pc: Array in _open_pieces(a, e, 2.4, true, 0.1):
+		var p0: Vector2 = pc[0]
+		var p1: Vector2 = pc[1]
+		var L := p0.distance_to(p1)
+		var dd := (p1 - p0) / L
+		var gy := minf(_h(p0), _h(p1)) - 0.05
+		g.add_wall(p0, p1, 0.06)
+		# two faces and the top (nobody sees its ends or under it): 6 triangles, not a box's 12
+		var nn := Vector3(-dd.y, 0, dd.x)
+		var A := Vector3(p0.x, gy, p0.y)
+		var B := Vector3(p1.x, gy, p1.y)
+		var up := Vector3.UP * H
+		for f: float in [1.0, -1.0]:
+			var o := nn * 0.02 * f
+			buf.tri(A + o, B + o, B + o + up, nn * f, col)
+			buf.tri(A + o, B + o + up, A + o + up, nn * f, col)
+		buf.tri(A + up + nn * 0.02, B + up + nn * 0.02, B + up - nn * 0.02, Vector3.UP, col)
+		buf.tri(A + up + nn * 0.02, B + up - nn * 0.02, A + up - nn * 0.02, Vector3.UP, col)
+		if n_piece % 2 == 0:   # a post every other piece, its four sides
+			_post4(buf, Vector3(p0.x, gy, p0.y), H + 0.1, 0.05, col.darkened(0.15))
+		n_piece += 1
+		done += L
+	return done
+
+## a square post r either side of `at`, h high: its four sides
+func _post4(buf, at: Vector3, h: float, r: float, col: Color) -> void:
+	var up := Vector3.UP * h
+	for f: Array in [[Vector3(r, 0, 0), Vector3(0, 0, r)], [Vector3(-r, 0, 0), Vector3(0, 0, r)],
+			[Vector3(0, 0, r), Vector3(r, 0, 0)], [Vector3(0, 0, -r), Vector3(r, 0, 0)]]:
+		var o: Vector3 = at + f[0]
+		var u: Vector3 = f[1]
+		buf.tri(o - u, o + u, o + u + up, (f[0] as Vector3).normalized(), col)
+		buf.tri(o - u, o + u + up, o - u + up, (f[0] as Vector3).normalized(), col)

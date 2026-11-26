@@ -5715,3 +5715,28 @@ within 1.2 m behind it. Both have posts.
   110 m. Givatayim: ~3,700. `wall_things["plants"]` keeps a few for tests (small_life's
   "balconies" shot).
 
+
+## Bedford's fenced back gardens (26 Nov 2026)
+
+The user, on Fleetview Drive: "houses ( or cotteges or whatever they are called ) ... have some
+kind of closed gardens on the back". OSM maps almost none of those fences, so furniture.gd
+`back_gardens()` (in `build()` after `fences()`, not in "med" towns) makes them. For each house
+of the square (`_bld_kind` 2, 80-450 m², no shops, 85% of them): the nearest street
+(`_nearest_seg`, 45 m) is its front; the back is whichever of the house's own axes (its
+longest wall) points most away from it. The garden runs from the rear wall 14, 11, 8 or 6 m out
+(the deepest whose corners and side middles are `_clear_at` with 0.5 m to spare), 1.2 m past the
+house each side; a garden overlapping one already placed (`_yards`, by 40 m cell, kept across
+squares) tries the next depth, so back-to-back gardens stop at each other. The fence
+(`_board_line`): a 1.8 m solid board panel each ~2.4 m piece (`_open_pieces`: cut round roads and
+buildings), two faces and a top (6 triangles), a square post every other piece, `add_wall` each
+piece; vertex colours (`_vc_mat`), the wood tone varied per house. Not clipped to the square: a
+house's garden is built whole by the square that owns the house.
+
+Bedford (level 2): 3,871 gardens, 193 km of fence. Headless the whole test takes ~1 min. A
+first try drew them with `_surface("woodfence")` (no vertex colours): they came out black.
+
+Test: `tests/back_gardens.gd` (headless: counts; drawn: Fleetview Drive from above, from a
+garden and from behind; `NO_YARDS=1` lays them out but does not show them, for the "before"
+pictures at the same spots). Open: a corner house's "front" is whichever street is nearer;
+gardens do not follow a curving lot line; nothing inside them yet (a shed, a deck, a trampoline
+would be the next step).
