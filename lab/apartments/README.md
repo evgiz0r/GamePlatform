@@ -53,6 +53,18 @@ floor on columns (parking, the lobby), the floors with each front window, balcon
 aircon units, penthouses set back on top, and the roof with the lift's machine room and a
 solar water heater per flat.
 
+## Where this is going (Evgeni, 2026-11-26, in his words)
+
+- scheme -> apartment walk
+- apartment -> decorate it
+- building -> walk into apartments (will need to see performance around those transitions)
+- apartment -> see the view of the city (will need to see performance around those transitions)
+
+So the JSON is the contract: a 3D builder walks a plan, items are separate records a
+"decorate" mode can move, a building knows where each flat sits (origin, turned round) so
+one flat can be built in detail while the rest stay boxes, and windows carry their
+direction for a city view later.
+
 ## Next steps (said, not built)
 
 More flat types (3 rooms, 5 rooms, garden flat, the penthouse's own plan with its roof
