@@ -5157,6 +5157,30 @@ stood 19-26 s; on two-way streets with 3 cars in the lane, 4 of 6 stood.
   0-5 on main too: main 0, 1, 4, 5 and this branch 0, 1, 4 -- noisy, not a verdict on one
   run), `load_bar` and `people_pops` (loading and walkers: other sessions' corners).
 
+## Bedford: a standoff at Giles Drive, a car park off a dead end (26 Nov 2026)
+The user, on the web build in Bedford: autodrive "slows down a lot, moving weirdly, even when
+alone on the road", then "need to fix these weird places and dead ends, always stuck there"
+(a shot of autodrive in a car park among parked cars off Meadowview Drive).
+- **Route 9 stood 230 s** at Hammonds Plains Road / Giles Drive (-2615, -695): turning left
+  into Giles, autodrive waited for a sedan nosing out of Giles; the sedan was held by
+  traffic's `_into_player` (why "player"), which resets its wait each tick, so the
+  face-to-face rule that sends a car elsewhere after 9 s never fired. After it went, the
+  next car out did the same. Autodrive's "ignore crossing cars after 3 s" (`lead_on`'s
+  ignore flag) did not get it out either: it lasts one tick, because `_ap_wait` is zeroed as
+  soon as the ignored car no longer limits the speed. Fix: racer's "nose to nose with a car
+  that waits for us: back off and plan again" now applies to autodrive too (AP_GIVE_S 5 s;
+  Probe event `autodrive_gave_way`). Route 9: arrived in 557 s (was 600 s, not arrived).
+  tests/turn_standoff.gd stages the spot but did not reproduce it with one car; the jam had
+  a queue round it. The one-tick ignore is still there (not changed: it is everywhere).
+- **Streets that end in a driveway/car park**: `_ap_ways` offered the driveway as the only
+  way on, so it was taken (service -6 only ranks it, it never refuses). Now `_ap_next`
+  treats a two-way street whose every way on is a service lane as a dead end and turns
+  round (roam only; tally `ap_lane_end_turn`). tests/dead_end_turns.gd counts those ends too.
+- **Go-to** (`_graph_roads`): service lanes cost 4x per metre, parking aisles/driveways 8x,
+  private ways 6x, so a route uses a car park only when there is no street way.
+- The "slows when alone" part: the drive log's slowdowns were real -- "curve" on bends
+  (46 -> 18 km/h on a sharp one) and "car" behind real cars 15-30 m ahead. Nothing phantom found.
+
 ## Open problems
 
 - **22 Nov, the second round of general bugs** (each with the test that measured it):

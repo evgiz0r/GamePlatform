@@ -12,6 +12,7 @@ extends SceneTree
 ## (Nov 2026): no hits; a three-point turn in ~11 s in most (four or five moves in some, one
 ## of 12 in Givatayim boxed in and finished on the spot); bumpers ~0.2 m over the kerb.
 ##
+## Streets ending in nothing but a driveway or car-park lanes count (LANE_ENDS=0: not).
 ## ONLY=<part of a street's name> for just that one, VERBOSE=1 for the car's state twice a second.
 ## Runs headless too, without screenshots (faster):
 ##   STREETS_BUILD_ALL=1 LEVEL=4 $GODOT --headless --path . -s res://game/streets/tests/dead_end_turns.gd
@@ -28,10 +29,16 @@ func _snap(name: String) -> void:
 ## end inward, the road's name], or [] when it is not one autodrive would drive into
 func _way_in(node: int) -> Array:
 	var es: Array = []
+	var lanes := 0
 	for e: Vector2i in g._node_roads[node]:
-		if (g._roads[e.x] as Dictionary)["drive"]:
-			es.append(e)
-	if es.size() != 1:
+		var rd: Dictionary = g._roads[e.x]
+		if rd["drive"]:
+			if rd["k"] == "service" or rd["pv"]:
+				lanes += 1   # (a street that ends in a driveway or a car park's lanes is a dead end too:
+				             # Bedford's Meadowview Drive, 26 Nov -- autodrive went on into the car park)
+			else:
+				es.append(e)
+	if es.size() != 1 or (lanes > 0 and OS.get_environment("LANE_ENDS") == "0"):
 		return []
 	var e: Vector2i = es[0]
 	var r: Dictionary = g._roads[e.x]
@@ -107,7 +114,7 @@ func _run() -> void:
 	rng.seed = 11 + lvl
 	var ends: Array = []
 	for n in range(g._nodes.size()):
-		if g._node_ways(n) != 1:
+		if g._node_ways(n) != 1 and OS.get_environment("LANE_ENDS") == "0":
 			continue
 		var w := _way_in(n)
 		if w.is_empty():
