@@ -40,6 +40,8 @@ func _way_in(node: int) -> Array:
 				es.append(e)
 	if es.size() != 1 or (lanes > 0 and OS.get_environment("LANE_ENDS") == "0"):
 		return []
+	if es[0].y != 0 and es[0].y != ((g._roads[es[0].x] as Dictionary)["pts"] as PackedVector2Array).size() - 1:
+		return []   # (the street runs on through: a footpath or a lane off its middle)
 	var e: Vector2i = es[0]
 	var r: Dictionary = g._roads[e.x]
 	if r["pv"] or int(r["o"]) != 0 or r["k"] == "service":
