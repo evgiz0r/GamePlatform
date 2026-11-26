@@ -531,6 +531,10 @@ func _process(delta: float) -> void:
 	var was := _pos
 	_move(look * fwd * WALK * delta)
 	_bob += _pos.distance_to(was) * 7.0     # a step every ~0.9 m
+	if not _riding:
+		_y = _height(_pos, _y)
+	if _cab and _in_lift(_pos):
+		_cab.position.y = _y
 	_head(delta)
 	_view()
 	_where()
@@ -568,7 +572,7 @@ func _view() -> void:
 	_above.visible = not _doll
 	_labels.visible = _doll
 	_figure.visible = _doll
-	_figure.position = Vector3(_pos.x, 0.85, _pos.y)
+	_figure.position = Vector3(_pos.x, _y + 0.85, _pos.y)
 	if _doll:
 		var size := Vector2(plan["size"][0], plan["size"][1])
 		# close and steep, so a piece is big enough to put a finger on
@@ -576,7 +580,7 @@ func _view() -> void:
 		var tz := _pos.y * 0.3 + size.y * 0.1   # a little towards the balcony, which hangs off the front
 		look_from(Vector3(_pos.x * 0.3, dist, tz + dist * 0.38), Vector3(_pos.x * 0.3, 0, tz))
 	else:
-		var eye := Vector3(_pos.x, EYE + 0.022 * sin(_bob), _pos.y)
+		var eye := Vector3(_pos.x, _y + EYE + 0.022 * sin(_bob), _pos.y)
 		var hy := _yaw + _head_yaw
 		var hp := _pitch + _head_pitch
 		var dirv := Vector3(-sin(hy) * cos(hp), sin(hp), -cos(hy) * cos(hp))
@@ -592,8 +596,14 @@ func _room_at(p: Vector2) -> Dictionary:
 	return best
 
 func _where() -> void:
-	var r := _room_at(_pos)
+	var r := _room_at(_pos) if _y > -1.0 else {}
 	var n: String = r.get("name", "")
+	if _in_core(_pos):
+		n = "lift" if _in_lift(_pos) else "stairwell"
+		r = {"kind": n}
+	elif _y < -1.0:
+		n = "under the building" if absf(_pos.x) < _hx and absf(_pos.y) < _hz else "street"
+		r = {"kind": n.replace(" ", "_")}
 	if n != _room_now:
 		_room_now = n
 		_room_label.text = n
@@ -605,10 +615,28 @@ func _where() -> void:
 ## Every room once, to its middle, in order along the flat, then back to where it began.
 ## The way between is found on a 20 cm grid of where the walker fits (AStarGrid2D), so the
 ## tour goes through doors and round the furniture by itself.
-func _start_tour() -> void:
+func _start_tour(from_street := false) -> void:
 	_tour.clear()
 	_make_grid()
 	var here := _pos
+	if from_street:
+		# from the pavement, under the building, through the lobby door, into the lift,
+		# up to the flat's floor, across the landing and in at the front door
+		var dx := _core.get_center().x
+		var lift_c := _lift.get_center()
+		_tour.append(Vector2(dx, _hz + 1.5))
+		_tour.append(Vector2(dx, -_hz + 1.0))
+		_tour.append({"look_at_point": Vector3(dx, _g0 + 1.4, -_hz), "say": "the lobby door", "t_max": 2.0})
+		_tour.append(Vector2(dx, -_hz - 0.7))
+		_tour.append(Vector2(lift_c.x, -_hz - 0.8))
+		_tour.append(lift_c)
+		_tour.append({"turn_to": PI})                     # face the lift doors (+Z)
+		_tour.append({"ride": 0.0})
+		_tour.append(Vector2(lift_c.x, -_hz - 0.7))
+		_tour.append(Vector2(dx, -_hz - 0.7))
+		_tour.append({"look_at_point": Vector3(dx, 1.2, -_hz), "say": "the front door", "t_max": 2.0})
+		here = _w(plan["start"][0], plan["start"][1])
+		_tour.append(here)
 	var rooms := []
 	for r in plan["rooms"]:
 		if r["kind"] in ["hall", "entrance"]:
@@ -617,7 +645,7 @@ func _start_tour() -> void:
 	rooms.sort_custom(func(p, q): return p["label"][0] < q["label"][0])
 	# in each room, walk up to its most interesting pieces (one or two) and look at them;
 	# a room with nothing worth a look gets a look round from its middle instead
-	var from := _pos
+	var from := here
 	for r in rooms:
 		var picks := []
 		for i in items.size():
@@ -731,7 +759,17 @@ func _head(delta: float) -> void:
 			else:
 				_glanced[_glance] = _tour_clock
 				_glance = -1
-	if touring and _tour[0] is Dictionary and _tour[0].has("view"):
+	if touring and _tour[0] is Dictionary and _tour[0].has("look_at_point"):
+		var lp: Vector3 = _tour[0]["look_at_point"]
+		want_p = atan2(lp.y - (_y + EYE), maxf(Vector2(lp.x, lp.z).distance_to(_pos), 0.3))
+		_caption(-1)
+		_look_label.text = "looking at " + str(_tour[0]["say"])
+		_said = -3
+	elif touring and _tour[0] is Dictionary and _tour[0].has("ride"):
+		_caption(-1)
+		_look_label.text = "going up in the lift"
+		_said = -3
+	elif touring and _tour[0] is Dictionary and _tour[0].has("view"):
 		_caption(-1)
 		if _look_label:
 			_look_label.text = "looking at the street"
@@ -781,6 +819,8 @@ func _aim(i: int) -> Vector2:
 ## Something worth a glance: near, ahead or to the side, in sight, not just looked at.
 func _pick_glance() -> int:
 	var best := -1
+	if _y < -1.0:
+		return best
 	var score := 0.0
 	for i in items.size():
 		var w: float = INTEREST.get(items[i]["name"], 0)
@@ -851,7 +891,7 @@ func _make_grid() -> void:
 	for x in _grid.region.size.x:
 		for y in _grid.region.size.y:
 			var c := _grid.offset + Vector2(x, y) * CELL
-			for r: Rect2 in _blocks():
+			for r: Rect2 in _flat_blocks():
 				if r.grow(R + 0.02).has_point(c):
 					_grid.set_point_solid(Vector2i(x, y))
 					break
@@ -881,6 +921,30 @@ func _path(a: Vector2, b: Vector2) -> Array:
 
 ## Steer at the next waypoint: (forward, turn). Turns on the spot when facing away.
 func _tour_step(delta: float) -> Vector2:
+	if _tour[0] is Dictionary and _tour[0].has("ride"):
+		# in the lift: the floor (and the walker) rises to the flat's level
+		_riding = true
+		var target: float = _tour[0]["ride"]
+		_y = move_toward(_y, target, 1.3 * delta)
+		if is_equal_approx(_y, target):
+			_riding = false
+			_tour.pop_front()
+		return Vector2.ZERO
+	if _tour[0] is Dictionary and _tour[0].has("turn_to"):
+		var dt := wrapf(float(_tour[0]["turn_to"]) - _yaw, -PI, PI)
+		if absf(dt) < 0.05:
+			_tour.pop_front()
+			return Vector2.ZERO
+		return Vector2(0.0, clampf(dt * 1.5, -0.6, 0.6))
+	if _tour[0] is Dictionary and _tour[0].has("look_at_point"):
+		var lp: Vector3 = _tour[0]["look_at_point"]
+		var to3 := Vector2(lp.x, lp.z) - _pos
+		var dl := wrapf(atan2(-to3.x, -to3.y) - _yaw, -PI, PI)
+		_tour[0]["t"] = float(_tour[0].get("t", 0.0)) + delta
+		if _tour[0]["t"] > float(_tour[0].get("t_max", 2.0)):
+			_tour.pop_front()
+			return Vector2.ZERO
+		return Vector2(0.0, clampf(dl * 1.2, -0.5, 0.5))
 	if _tour[0] is Dictionary and _tour[0].has("view"):
 		# at the balcony rail: face the street, look down at it, then across and along it
 		_tour[0]["t"] = float(_tour[0].get("t", 0.0)) + delta
@@ -951,7 +1015,12 @@ func film_ready() -> bool:
 	if _loaded and not _filming:
 		_filming = true
 		_doll = false   # eye level from the first frame to the last (Evgeni: "not from the top")
-		_start_tour()
+		# from the street: under the building, the lobby, the lift, then the flat
+		_pos = Vector2(_core.get_center().x + 2.0, _hz + 6.0)
+		_y = _g0
+		_yaw = 0.0
+		_cab.position.y = _g0     # the lift waits on the entrance floor
+		_start_tour(true)
 	return _loaded
 
 func film_mode(on: bool) -> void:
@@ -1013,12 +1082,139 @@ const C_ROAD := Color(0.28, 0.28, 0.30)
 const C_PAVE := Color(0.70, 0.68, 0.64)
 const C_WIN := Color(0.25, 0.32, 0.40)
 var _above: Node3D
+var _y := 0.0                     ## the floor under the walker (0 = the flat's floor)
+var _riding := false
+var _g0 := -9.0                   ## the street's level
+var _hx := 5.0
+var _hz := 5.0
+var _core := Rect2()              ## the stairwell, world X/Z
+var _lift := Rect2()              ## the lift car's floor
+var _cab: Node3D
+var _core_solid: Array = []       ## its walls, on every level
+var _ground_solid: Array = []     ## the entrance floor: columns, the lobby wall (door gap)
+var _mid_solid: Array = []        ## floors between: the stairwell's front wall, closed
+
+## ---- the stairwell: landings, two flights a floor, the lift --------------------------
+##
+## Behind the flat, centred on its front door: 4 m wide, 5 m deep. A landing by the doors
+## (1.3 m), then two flights side by side (2.5 m) to a half landing at the back (1.2 m);
+## the lift beside the flights, its doors on the landing. On the entrance floor the front
+## wall has the lobby's glass door; on the flat's floor it is the flat's own wall.
+
+const CORE_W := 4.0
+const CORE_D := 5.0
+
+func _build_core(g0: float) -> void:
+	var size := Vector2(plan["size"][0], plan["size"][1])
+	var fd: Dictionary = {}
+	for d in plan["doors"]:
+		if d["style"] == "front":
+			fd = d
+	var dx := _w((float(fd["a"]) + float(fd["b"])) / 2.0, 0).x
+	var z1 := -_hz
+	var z0 := z1 - CORE_D
+	var x0 := dx - CORE_W / 2.0
+	var x1 := dx + CORE_W / 2.0
+	_core = Rect2(x0, z0, CORE_W, CORE_D)
+	var top := H + 0.1
+	var wc := Color(0.88, 0.87, 0.84)
+	var t := 0.2
+	# outer walls: the two sides and the back, street to roof
+	for r in [Rect2(x0 - t, z0 - t, t, CORE_D + t), Rect2(x1, z0 - t, t, CORE_D + t), Rect2(x0 - t, z0 - t, CORE_W + 2 * t, t)]:
+		_box(Vector3(r.position.x, g0, r.position.y), Vector3(r.end.x, top, r.end.y), wc)
+		_core_solid.append(r)
+	_box(Vector3(x0 - t, top, z0 - t), Vector3(x1 + t, top + 0.2, z1), wc)     # its roof
+	# the front wall below the flat: the lobby door on the entrance floor, closed above
+	var door_w := 1.4
+	_box(Vector3(x0, g0, z1 - 0.1), Vector3(dx - door_w / 2, g0 + STOREY, z1 + 0.1), wc)
+	_box(Vector3(dx + door_w / 2, g0, z1 - 0.1), Vector3(x1, g0 + STOREY, z1 + 0.1), wc)
+	_box(Vector3(dx - door_w / 2, g0 + 2.3, z1 - 0.1), Vector3(dx + door_w / 2, g0 + STOREY, z1 + 0.1), wc)
+	_box(Vector3(dx - door_w / 2, g0, z1 - 0.03), Vector3(dx - 0.05, g0 + 2.3, z1 + 0.03), C_GLASS)
+	_ground_solid.append(Rect2(x0, z1 - 0.1, dx - door_w / 2 - x0, 0.2))
+	_ground_solid.append(Rect2(dx + door_w / 2, z1 - 0.1, x1 - dx - door_w / 2, 0.2))
+	_box(Vector3(x0, g0 + STOREY, z1 - 0.1), Vector3(x1, -0.06, z1 + 0.1), wc)
+	_mid_solid.append(Rect2(x0, z1 - 0.1, CORE_W, 0.2))
+	for k in [1, 2]:    # the neighbours' front doors on the floors between
+		_box(Vector3(dx - 0.45, g0 + k * STOREY, z1 - 0.12), Vector3(dx + 0.45, g0 + k * STOREY + 2.05, z1 - 0.1), C_STEEL_DOOR)
+	# floors: a landing at each level, the half landings, and the flights
+	var fa := Rect2(x0, z1 - 3.8, 1.15, 2.5)            # flight A: up from the landing, away
+	var fb := Rect2(x0 + 1.25, z1 - 3.8, 1.15, 2.5)     # flight B: up from the half landing, back
+	_stairs = {"a": fa, "b": fb, "z_front": z1 - 1.3, "run": 2.5, "x0": x0, "x1": x1, "z0": z0, "z1": z1}
+	for k in FLOOR_UP + 1:
+		var y := g0 + k * STOREY
+		_box(Vector3(x0, y - 0.2, z1 - 1.3), Vector3(x1, y, z1), Color(0.75, 0.73, 0.70))
+		if k < FLOOR_UP:
+			_box(Vector3(x0, y + 1.3, z0), Vector3(x0 + 2.4, y + 1.5, z1 - 3.8), Color(0.75, 0.73, 0.70))
+			for j in 9:
+				var za := z1 - 1.3 - j * 2.5 / 9.0
+				_box(Vector3(fa.position.x, y, za - 2.5 / 9.0), Vector3(fa.end.x, y + (j + 1) * 1.5 / 9.0, za), Color(0.80, 0.78, 0.74))
+				var zb := z1 - 3.8 + j * 2.5 / 9.0
+				_box(Vector3(fb.position.x, y + 1.5, zb), Vector3(fb.end.x, y + 1.5 + (j + 1) * 1.5 / 9.0, zb + 2.5 / 9.0), Color(0.80, 0.78, 0.74))
+	# the wall between the flights, and a handrail on the flights' open side
+	_box(Vector3(x0 + 1.15, g0, z1 - 3.8), Vector3(x0 + 1.25, top, z1 - 1.3), wc)
+	_core_solid.append(Rect2(x0 + 1.15, z1 - 3.8, 0.1, 2.5))
+	# the lift: a shaft beside the flights, open to the landing, and its car
+	_lift = Rect2(x0 + 2.55, z1 - 3.0, x1 - x0 - 2.6, 1.65)
+	for r in [Rect2(x0 + 2.4, z1 - 3.1, 0.12, 1.8), Rect2(x0 + 2.4, z1 - 3.25, x1 - x0 - 2.4, 0.15)]:
+		_box(Vector3(r.position.x, g0, r.position.y), Vector3(r.end.x, top, r.end.y), Color(0.70, 0.70, 0.72))
+		_core_solid.append(r)
+	_core_solid.append(Rect2(x0 + 2.4, z0, x1 - x0 - 2.4, z1 - 3.25 - z0))   # dead space behind it
+	world.add_child(_commit("Core"))
+	_box(Vector3(_lift.position.x, -0.05, _lift.position.y), Vector3(_lift.end.x, 0.0, _lift.end.y), Color(0.55, 0.55, 0.58))
+	_box(Vector3(_lift.position.x, 0.0, _lift.position.y), Vector3(_lift.end.x, 2.2, _lift.position.y + 0.05), C_STEEL)
+	_box(Vector3(_lift.position.x, 2.2, _lift.position.y), Vector3(_lift.end.x, 2.25, _lift.end.y), Color(0.9, 0.9, 0.85))
+	_cab = _commit("LiftCar")
+	world.add_child(_cab)
+
+var _stairs := {}
+
+func _in_core(p: Vector2) -> bool:
+	return _core.has_point(p)
+
+func _in_lift(p: Vector2) -> bool:
+	return _lift.grow(0.05).has_point(p)
+
+## The floor's height under a point, given the height the walker is at now: the stairs
+## overlap themselves floor over floor, so the nearest of the levels they could be on wins.
+func _height(p: Vector2, cur: float) -> float:
+	if _in_core(p) and not _stairs.is_empty():
+		if _in_lift(p):
+			return cur
+		var cands: Array = []
+		var fa: Rect2 = _stairs["a"]
+		var fb: Rect2 = _stairs["b"]
+		var zf: float = _stairs["z_front"]
+		for k in FLOOR_UP + 1:
+			var base := _g0 + k * STOREY
+			if p.y >= zf:
+				cands.append(base)
+			elif k < FLOOR_UP:
+				var tt := clampf((zf - p.y) / 2.5, 0.0, 1.0)
+				if fa.has_point(p):
+					cands.append(base + 1.5 * tt)
+				elif fb.has_point(p):
+					cands.append(base + 1.5 + 1.5 * (1.0 - tt))
+				else:
+					cands.append(base + 1.5)
+		var best := cur
+		var dbest := INF
+		for c in cands:
+			if absf(c - cur) < dbest:
+				dbest = absf(c - cur)
+				best = c
+		return best
+	if absf(p.x) < _hx and absf(p.y) < _hz and cur > -1.5:
+		return 0.0
+	return _g0
 
 func _build_outside() -> void:
 	var size := Vector2(plan["size"][0], plan["size"][1])
 	var g0 := -FLOOR_UP * STOREY      # the street's level
 	var hx := size.x / 2.0
 	var hz := size.y / 2.0
+	_g0 = g0
+	_hx = hx
+	_hz = hz
 	var rng := RandomNumberGenerator.new()
 	rng.seed = int(plan.get("seed", 1)) * 977
 	# the ground, the pavements and the street in front
@@ -1030,7 +1226,21 @@ func _build_outside() -> void:
 		_box(Vector3(k * 2.0, g0 + 0.02, street_a + 4.45), Vector3(k * 2.0 + 1.0, g0 + 0.03, street_a + 4.55), Color(0.9, 0.9, 0.85))
 	_box(Vector3(-80, g0, street_a + 9.0), Vector3(80, g0 + 0.12, street_a + 12.0), C_PAVE)
 	# our own building: from the street up to under the flat, and two storeys over it
-	_block(Vector3(-hx, g0, -hz), Vector3(hx, -0.06, hz), C_PLASTER[0], true)
+	# its entrance floor is open, on columns (as most Givatayim blocks are); the two floors
+	# over it are other people's flats
+	_block(Vector3(-hx, g0 + STOREY, -hz), Vector3(hx, -0.06, hz), C_PLASTER[0], true)
+	_box(Vector3(-hx, g0 + STOREY - 0.35, -hz), Vector3(hx, g0 + STOREY, hz), C_PLASTER[0].darkened(0.1))
+	var door_x := 0.0
+	for d in plan["doors"]:
+		if d["style"] == "front":
+			door_x = _w((float(d["a"]) + float(d["b"])) / 2.0, 0).x
+	for cxk in [-hx + 0.2, -hx / 3.0, hx / 3.0, hx - 0.2]:
+		if absf(cxk - door_x) < 1.2:
+			continue     # keep the way from the street to the lobby door clear
+		for czk in [-hz + 0.2, 0.0, hz - 0.2]:
+			_box(Vector3(cxk - 0.2, g0, czk - 0.2), Vector3(cxk + 0.2, g0 + STOREY - 0.35, czk + 0.2), C_PLASTER[3])
+			_ground_solid.append(Rect2(cxk - 0.2, czk - 0.2, 0.4, 0.4))
+	_build_core(g0)
 	# neighbours beside ours, across the street and behind
 	for side in [-1, 1]:
 		var x0 := hx + 4.0
@@ -1221,7 +1431,17 @@ func _kitchen_run(put: Callable, L: float, D: float, it: Dictionary) -> bool:
 
 ## Walls, windows and rails, then the furniture that is in the way.
 func _blocks() -> Array:
+	if _y < -1.0:
+		# down the stairwell or at the street: the flat's walls are not on this level
+		var out2: Array = _core_solid.duplicate()
+		out2.append_array(_ground_solid if _y < _g0 + 1.5 else _mid_solid)
+		return out2
+	return _flat_blocks()
+
+## The flat's walls and solid furniture (and the stairwell's walls, on the flat's level).
+func _flat_blocks() -> Array:
 	var out: Array = _solid.duplicate()
+	out.append_array(_core_solid)
 	for i in items.size():
 		if items[i]["solid"]:
 			out.append(items[i]["rect"])
