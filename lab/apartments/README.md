@@ -65,6 +65,12 @@ So the JSON is the contract: a 3D builder walks a plan, items are separate recor
 one flat can be built in detail while the rest stay boxes, and windows carry their
 direction for a city view later.
 
+## The 3D walk
+
+A game can build these plans in 3D: `python3 lab/apartments/plan.py --export 1-8 --out
+<that game's folder>/plans` writes the compact JSON it reads (`walk_json()`: rooms, merged
+wall runs, doors, items, a start point) and prints the `LEVELS` lines for it.
+
 ## Next steps (said, not built)
 
 More flat types (3 rooms, 5 rooms, garden flat, the penthouse's own plan with its roof

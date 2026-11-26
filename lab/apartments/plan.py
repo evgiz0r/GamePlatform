@@ -672,6 +672,52 @@ class Plan:
             "notes": self.notes,
         }
 
+    def wall_runs(self):
+        """Every wall as merged straight runs: [o, line, a, b, kind, thickness], metres.
+        o "v" runs along y at x = line, "h" along x at y = line. Door runs are the gaps a
+        builder puts a lintel over; window runs get a sill and a lintel."""
+        by = {}
+        for (o, x, y), k in self.edges.items():
+            line, pos = (x, y) if o == "v" else (y, x)
+            by.setdefault((o, line, k), []).append(pos)
+        runs = []
+        for (o, line, k), ps in sorted(by.items()):
+            ps.sort()
+            s0 = prev = ps[0]
+            for p in ps[1:] + [None]:
+                if p is None or p != prev + 1:
+                    runs.append([o, round(line * DM, 2), round(s0 * DM, 2), round((prev + 1) * DM, 2),
+                                 k, round(THICK.get(k, 1.0) * DM, 3)])
+                    if p is not None:
+                        s0 = p
+                if p is not None:
+                    prev = p
+        return runs
+
+    def walk_json(self):
+        """The compact form a 3D walk-through reads (game side): metres, x right, y away
+        from the stairwell (the builder's +Z)."""
+        m = lambda v: round(v * DM, 2)
+        rooms = []
+        for r in self.rooms:
+            cx, cy = self.label_spot(r["id"], 12, 6)
+            rooms.append({"kind": r["kind"], "name": NAMES[r["kind"]],
+                          "rect": [m(v) for v in r["rect"]], "area": round(self.area(r["id"]), 1),
+                          "label": [m(cx), m(cy)]})
+        fd = [d for d in self.doors if d["style"] == "front"][0]
+        return {
+            "seed": self.seed, "summary": self.summary(),
+            "size": [m(self.W), m(self.H)],
+            "rooms": rooms,
+            "walls": self.wall_runs(),
+            "doors": [{"o": d["o"], "line": m(d["line"]), "a": m(d["a"]), "b": m(d["b"]),
+                       "style": d["style"], "side": d["side"], "hinge": m(d["hinge"]),
+                       "into": self.rooms[d["into"]]["kind"]} for d in self.doors],
+            "items": [{"name": i["name"], "rect": [m(v) for v in i["rect"]], "face": i["face"],
+                       "room": self.rooms[i["room"]]["kind"]} for i in self.items],
+            "start": [m((fd["a"] + fd["b"]) / 2), 0.8],
+        }
+
     def summary(self):
         rooms = [r for r in self.rooms if r["kind"] in ("bedroom", "parents", "mamad", "salon")]
         inner = sum(self.area(r["id"]) for r in self.rooms if r["kind"] != "mirpeset")
@@ -993,8 +1039,17 @@ def main():
     ap.add_argument("--sheet", help="seeds for a contact sheet, e.g. 1-6")
     ap.add_argument("--out", default=OUT)
     ap.add_argument("--scale", type=int, default=50, help="pixels per metre")
+    ap.add_argument("--export", help="write walk JSONs for these seeds (e.g. 1-8) to --out")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
+    if a.export:
+        for s in parse_range(a.export):
+            p = Plan(s).build()
+            path = os.path.join(a.out, "plan_%d.json" % s)
+            with open(path, "w") as fh:
+                json.dump(p.walk_json(), fh, separators=(",", ":"))
+            print('\t{"name": "flat %d: %s", "plan": "plan_%d"},' % (s, p.summary(), s))
+        return
     if a.sheet:
         seeds = parse_range(a.sheet)
         imgs = []
