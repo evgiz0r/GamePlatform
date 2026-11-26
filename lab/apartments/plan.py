@@ -56,7 +56,11 @@ WET = {"bath", "ensuite", "toilet"}
 
 
 class Plan:
-    def __init__(self, seed):
+    def __init__(self, seed, W=None, ent_w=None, mirror=None, party=()):
+        """W, ent_w (dm) and mirror can be forced so a building can line flats up on its
+        stairwell; left None they come from the seed."""
+        self.force = {"W": W, "ent_w": ent_w, "mirror": mirror}
+        self.party = set(party)   ## "x0" / "x1": a side wall shared with the next flat (no windows)
         self.seed = seed
         self.rng = random.Random(seed)
         self.rooms = []      # {"id", "kind", "rect": [x0, y0, x1, y1] dm}
@@ -79,6 +83,8 @@ class Plan:
     def layout(self):
         g = self.rng
         W = g.randint(105, 130)
+        if self.force["W"]:
+            W = self.force["W"]
         back = g.randint(36, 42)
         hall_d = g.randint(11, 13)
         front = g.randint(40, 48)
@@ -88,6 +94,8 @@ class Plan:
 
         # back strip, from the stairwell side: entrance, then the small rooms shuffled
         ent_w = g.randint(17, 21)
+        if self.force["ent_w"]:
+            ent_w = self.force["ent_w"]
         smalls = [("toilet", g.randint(11, 13)), ("bath", g.randint(19, 22)),
                   ("mamad", g.randint(27, 31))]
         g.shuffle(smalls)
@@ -97,6 +105,16 @@ class Plan:
             back_rooms.append((kind, x, x + w))
             x += w
         rest = W - x
+        if rest < 28:
+            # no space for a decent bedroom: drop the guest toilet (plenty of flats have none)
+            back_rooms = [("entrance", 0, ent_w)]
+            x = ent_w
+            for kind, w in smalls:
+                if kind == "toilet":
+                    continue
+                back_rooms.append((kind, x, x + w))
+                x += w
+            rest = W - x
         if rest >= 58:
             half = rest // 2
             back_rooms.append(("bedroom", x, x + half))
@@ -113,11 +131,23 @@ class Plan:
         if par_w > 45:
             sal_w += par_w - 40
             par_w = 40
+        if par_w < 36:
+            # the parents' room needs a double bed beside its shower room: take it from
+            # the salon (down to 4 m) and then the kitchen (down to 2.4 m)
+            need = 36 - par_w
+            take = min(need, max(0, sal_w - 40))
+            sal_w -= take
+            need -= take
+            take = min(need, max(0, kit_w - 24))
+            kit_w -= take
+            par_w = W - kit_w - sal_w
         fy = back + hall_d
         front_rooms = [("kitchen", 0, kit_w), ("salon", kit_w, kit_w + sal_w),
                        ("parents", kit_w + sal_w, W)]
 
         mirror = g.random() < 0.5
+        if self.force["mirror"] is not None:
+            mirror = self.force["mirror"]
         self.mirror = mirror
 
         def mx(a, b):
@@ -301,6 +331,9 @@ class Plan:
                 continue
             runs = [rr for rr in self.runs_between(r["id"], -1)]
             runs = [rr for rr in runs if not (r is self.ent)]
+            # no windows in a wall shared with the neighbours
+            runs = [rr for rr in runs if not (rr[0] == "v" and (
+                (rr[1] == 0 and "x0" in self.party) or (rr[1] == self.W and "x1" in self.party)))]
             # windows look out of the flat, not onto the stairwell (y = 0 behind the entrance
             # is the stairwell, but the back rooms face a light well/the yard: allowed)
             runs = [rr for rr in runs
@@ -595,6 +628,26 @@ class Plan:
         self.furnish()
         return self
 
+    def label_spot(self, rid, w, h):
+        """Centre (dm) of a w x h box inside room rid, off the furniture, nearest the
+        room's middle; the middle itself if nothing is free."""
+        cells = self.cells(rid)
+        if not cells:
+            return None
+        sx = sum(c[0] for c in cells) / len(cells)
+        sy = sum(c[1] for c in cells) / len(cells)
+        best = None
+        cs = set(cells)
+        for (x, y) in cells:
+            d = math.hypot(x + w / 2 - sx, y + h / 2 - sy)
+            if best is not None and d >= best[0]:
+                continue
+            ok = all((xx, yy) in cs and (xx, yy) not in self.occupied
+                     for yy in range(y, y + h) for xx in range(x, x + w))
+            if ok:
+                best = (d, x + w / 2, y + h / 2)
+        return (best[1], best[2]) if best else (sx, sy)
+
     def area(self, rid):
         return len(self.cells(rid)) * DM * DM
 
@@ -634,12 +687,11 @@ FURN = (255, 255, 255)
 FURN_LINE = (110, 110, 120)
 
 
-def render(p, scale=50, title=True):
-    pad = 40
+def render(p, scale=50, title=True, labels=True, stair_hint=True, pad=40, bg=(250, 250, 247)):
     top = 64 if title else pad
     Wpx = int(p.W * DM * scale) + 2 * pad
     Hpx = int(p.H * DM * scale) + top + pad
-    img = Image.new("RGB", (Wpx, Hpx), (250, 250, 247))
+    img = Image.new("RGBA", (Wpx, Hpx), bg + (255,) if bg else (0, 0, 0, 0))
     dr = ImageDraw.Draw(img)
     f_room = ImageFont.truetype(FONT_B, 13)
     f_small = ImageFont.truetype(FONT, 11)
@@ -670,10 +722,11 @@ def render(p, scale=50, title=True):
             for gy in range(y0, y1, 3):
                 dr.line([P(x0, gy), P(x1, gy)], fill=(205, 222, 232))
     # stairwell hint behind the front door
-    fd = [d for d in p.doors if d["style"] == "front"][0]
-    a, b = P(fd["a"] - 6, -8), P(fd["b"] + 6, 0)
-    dr.rectangle([a, b], fill=(232, 232, 232))
-    dr.text((a[0] + 4, a[1] + 1), "stairwell", font=f_small, fill=(130, 130, 130))
+    if stair_hint:
+        fd = [d for d in p.doors if d["style"] == "front"][0]
+        a, b = P(fd["a"] - 6, -8), P(fd["b"] + 6, 0)
+        dr.rectangle([a, b], fill=(232, 232, 232))
+        dr.text((a[0] + 4, a[1] + 1), "stairwell", font=f_small, fill=(130, 130, 130))
 
     # furniture
     for it in p.items:
@@ -729,27 +782,8 @@ def render(p, scale=50, title=True):
     for d in p.doors:
         draw_door(dr, P, p, d, scale)
 
-    # labels
-    for r in p.rooms:
-        if r["kind"] == "hall":
-            continue
-        x0, y0, x1, y1 = r["rect"]
-        if r["kind"] == "parents":
-            # label the part left after the shower room
-            ex0, ey0, ex1, ey1 = p.ens["rect"]
-            y0 = ey1 if (x1 - x0) - (ex1 - ex0) < 25 else y0
-            if (x1 - x0) - (ex1 - ex0) >= 25:
-                x0, x1 = (ex1, x1) if ex0 == x0 else (x0, ex0)
-        cx, cy = P((x0 + x1) / 2, (y0 + y1) / 2)
-        name = NAMES[r["kind"]]
-        if r["kind"] == "mamad":
-            name = "mamad"
-        txt = "%s\n%.1f m²" % (name, p.area(r["id"]))
-        bb = dr.multiline_textbbox((0, 0), txt, font=f_room, align="center")
-        tw, th = bb[2] - bb[0], bb[3] - bb[1]
-        dr.rounded_rectangle([cx - tw / 2 - 4, cy - th / 2 - 3, cx + tw / 2 + 4, cy + th / 2 + 4],
-                             radius=4, fill=(255, 255, 255, 200))
-        dr.multiline_text((cx - tw / 2, cy - th / 2), txt, font=f_room, fill=INK, align="center")
+    if labels:
+        draw_labels(dr, P, p, f_room, scale)
 
     if title:
         dr.text((pad, 12), "seed %d  ·  %s" % (p.seed, p.summary()), font=f_title, fill=INK)
@@ -758,6 +792,30 @@ def render(p, scale=50, title=True):
         dr.line([(x, y), (x + scale, y)], fill=INK, width=2)
         dr.text((x + scale / 2 - 8, y + 3), "1 m", font=f_small, fill=INK)
     return img
+
+
+def label_text(p, r):
+    return "%s\n%.1f m²" % (NAMES[r["kind"]], p.area(r["id"]))
+
+
+def draw_labels(dr, P, p, font, scale, xf=None):
+    """Room names and areas, each in a free spot of its room. xf maps a plan point (dm)
+    to another plan point first (a building turns some flats round)."""
+    for r in p.rooms:
+        if r["kind"] == "hall":
+            continue
+        txt = label_text(p, r)
+        bb = dr.multiline_textbbox((0, 0), txt, font=font, align="center")
+        tw, th = bb[2] - bb[0], bb[3] - bb[1]
+        wd = int(math.ceil((tw + 8) / (DM * scale))) + 1
+        hd = int(math.ceil((th + 7) / (DM * scale))) + 1
+        cxd, cyd = p.label_spot(r["id"], wd, hd)
+        if xf:
+            cxd, cyd = xf(cxd, cyd)
+        cx, cy = P(cxd, cyd)
+        dr.rounded_rectangle([cx - tw / 2 - 4, cy - th / 2 - 3, cx + tw / 2 + 4, cy + th / 2 + 4],
+                             radius=4, fill=(255, 255, 255))
+        dr.multiline_text((cx - tw / 2, cy - th / 2), txt, font=font, fill=INK, align="center")
 
 
 def draw_door(dr, P, p, d, scale):
@@ -942,7 +1000,7 @@ def main():
         imgs = []
         for s in seeds:
             p = Plan(s).build()
-            imgs.append(render(p, scale=a.scale))
+            imgs.append(render(p, scale=a.scale).convert("RGB"))
             for n in p.notes:
                 print("seed %d: %s" % (s, n))
         cols = 3 if len(imgs) > 4 else 2
@@ -957,7 +1015,7 @@ def main():
         print(path)
         return
     p = Plan(a.seed).build()
-    img = render(p, scale=a.scale)
+    img = render(p, scale=a.scale).convert("RGB")
     path = os.path.join(a.out, "plan_%d.png" % a.seed)
     img.save(path)
     with open(os.path.join(a.out, "plan_%d.json" % a.seed), "w") as fh:

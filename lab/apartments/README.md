@@ -38,7 +38,23 @@ slider / front, which room it swings into), `windows`, `items` (name, room, rect
 the way the item faces: S is +y), `edges_10cm` (every 10 cm wall piece and its kind:
 ext / wall / mamad / window / door / rail), `notes` (what did not fit).
 
+## Buildings (v1)
+
+```bash
+python3 lab/apartments/building.py --seed 4     # out/building_4_floor.png + _front.png
+```
+
+A typical floor: the stairwell (landing, two flights, the lift) in the middle, two flats
+either side of it, their front doors on the landing (`Plan(W=, ent_w=20, mirror=)` lines
+each entrance up on it). With four flats a floor the back pair is a front pair turned round,
+and what the stairwell does not fill between them is an open light well. Walls shared with
+the next flat get no windows (`Plan(party=("x0",))`). The street side shows the entrance
+floor on columns (parking, the lobby), the floors with each front window, balcony and some
+aircon units, penthouses set back on top, and the roof with the lift's machine room and a
+solar water heater per flat.
+
 ## Next steps (said, not built)
 
-Building: floors, stairwell and elevator, several flats per floor. More flat types (3 rooms,
-5 rooms, garden flat, penthouse with a roof terrace). Service balcony. More items. 3D.
+More flat types (3 rooms, 5 rooms, garden flat, the penthouse's own plan with its roof
+terrace). Service balcony. More items. Ground floor plan (lobby, mailboxes, bike room,
+parking). 3D.
