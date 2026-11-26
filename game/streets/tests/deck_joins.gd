@@ -52,9 +52,10 @@ func _run() -> void:
 				continue
 			var inn := pts[1] if end == 0 else pts[pts.size() - 2]
 			joins.append([ri, end, pts[j], (pts[j] - inn).normalized(), ground_r])
-	print("deck_joins: ", joins.size(), " joins of a drivable deck with a ground road")
+	print("deck_joins: ", joins.size(), " joins of a drivable deck with a ground road; points leveled with an overlapping road: %d (most moved %.2f m)" % [d.leveled, d.leveled_max])
 	_check_drawn(d)
 	_check_ends(d)
+	_check_seams(d)
 	var shots := int(OS.get_environment("SHOTS")) if OS.get_environment("SHOTS") != "" else 10
 	g.set_physics_process(false)
 	process_frame.disconnect(g._frame)
@@ -207,3 +208,50 @@ func _check_ends(d) -> void:
 	print("deck_joins: %d drivable deck ends in the air, %d joints between two decks at a bend over 4 degrees" % [hanging, bends])
 	for l: String in lines:
 		print(l)
+
+## Seams: a drivable deck's asphalt edge lying on another road's carriageway (a deck's or the
+## ground's) at a height 0.15-1.2 m off it -- a step you see from the car, or a slot under
+## it (a divided road's two halves, lifted by different amounts, overlap at the median).
+## Every 2 m along both edges; prints the worst places.
+func _check_seams(d) -> void:
+	var n := 0
+	var total := 0
+	var worst: Array = []
+	for ri: int in d.decks:
+		var r: Dictionary = g._roads[ri]
+		if not r["drive"]:
+			continue
+		var pts: PackedVector2Array = d._dense(r["pts"], 2.0)
+		for sd: float in [-1.0, 1.0]:
+			var line: PackedVector2Array = g._offset_line(pts, float(r["w"]) * 0.5 * sd)
+			for i in range(line.size()):
+				var p := line[i]
+				var y: float = d.deck_y(ri, pts[i])
+				total += 1
+				var dy := 0.0
+				for code: int in g._near(g._seg_hash, p, 8.0, g.SEG_CELL):
+					var rj: int = code / 4096
+					var o: Dictionary = g._roads[rj]
+					if rj == ri or not o["drive"]:
+						continue
+					var op: PackedVector2Array = o["pts"]
+					var sj: int = code % 4096
+					if Geometry2D.get_closest_point_to_segment(p, op[sj], op[sj + 1]).distance_to(p) > float(o["w"]) * 0.5 - 0.2:
+						continue
+					var oy: float = d.seg_y(rj, sj, p) if o.has("ys") else g._h(p)
+					var dd := absf(y - oy)
+					if dd > 0.15 and dd < 1.2:
+						dy = maxf(dy, dd)
+				if dy > 0.0:
+					n += 1
+					worst.append([dy, "%.2f m: road %d '%s' (%s) at (%d, %d)" % [dy, ri, r.get("name", ""), r["deck"], p.x, p.y]])
+	worst.sort_custom(func(a, b): return a[0] > b[0])
+	print("deck_joins: %d of %d deck edge points lie on another road's lanes 0.15-1.2 m above or below it (seams)" % [n, total])
+	var shown := {}
+	for w: Array in worst:
+		var key := String(w[1]).get_slice("at", 0)
+		if shown.size() >= 12:
+			break
+		if not shown.has(key):
+			shown[key] = true
+			print("  seam ", w[1])

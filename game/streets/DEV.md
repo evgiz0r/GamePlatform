@@ -2925,10 +2925,26 @@ it is dropped.
     (`_joint_disc`). Bedford 31 such joints, Tel Aviv 46.
   - **Ends in the air**: none real. What the check lists are roads cut off at the map's edge
     (the MacKay Bridge) and Tel Aviv's tunnels and cuttings whose OSM ways stop underground.
-  - **Still open**: short wall stubs where an embankment's wall hands over to its grass bank
-    (98 runs under 4 m in Bedford, by design: the wall reaches into each change, but a 2 m
-    stub beside a carriageway reads as junk); a thin concrete line across the road where a
-    bridge's slab end meets the ground road at the Highway 102 bridge by Meadowview.
+  - **Round 2 (same day): seams, stubs.** The check now also counts *seams*: a deck's asphalt
+    edge on another road's lanes 0.15-1.2 m above or below it. Where a slip road leaves a road
+    (or a ramp's foot leaves a street), the two were lifted separately and stood apart where
+    they overlap: the concrete edge seen across Highway 102 by Meadowview, and Highway 101's
+    southbound hop (14 frames in the air; the slip road there is mapped 5 m beside Bedford
+    Highway's own ramp for 70 m). `_level_overlaps()` (setup) holds the lesser road -- by
+    `MAIN_LINE` rank, else the narrower; a deck meeting a ground street takes the street's --
+    at the other's height from the point they share, while its middle lies on the other's
+    asphalt, up to `HOLD_REACH` (80 m); then straight back to its own heights (no climbing
+    back up past the hold), else eased at `LEVEL_GRADE`. Only embankments and bridges, and
+    never onto the road it carries straight on from (a ramp's foot was held down on its own
+    street). Highway 101 back: 0 frames in the air. Two traps on the way: holding every
+    overlap, not only from a shared point, wrecked those side-by-side roads (2 m steps); and
+    easing from the hold climbed the slip road back up 0.6 m (a dip). Seams overall barely
+    moved (Bedford 2702 -> 2630): most are long side-by-side overlaps -- divided roads whose
+    halves are mapped closer than their widths -- which want the halves lifted together in
+    `infer`, not done.
+  - **Wall stubs**: the bank started at 0.4 m of drop, and below it the wall did, so the foot
+    of every bank had a low wall 2-3 m long standing alone. Banks now start at 0.15 m
+    (`BANK_FROM`): Bedford's lone short runs 98 -> 54.
 - **Still to do**: grass slopes for cuttings too (they are walled); a
   long-span bridge's height over water (the MacKay's deck is only as high as its ends);
   pavements at street level beside a cutting (the underpass has none); people on a bridge's

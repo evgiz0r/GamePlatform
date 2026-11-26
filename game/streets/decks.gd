@@ -102,6 +102,7 @@ func setup() -> void:
 			g._hash_add(_hash, Rect2(pts[j], Vector2.ZERO).expand(pts[j + 1]).grow(float(r["foot"]) + 0.5), CELL, ri * 4096 + j)
 		for v in ys:
 			lowest = minf(lowest, v)
+	_level_overlaps()
 	for ri: int in decks:   # which ends another deck carries on from
 		var r: Dictionary = g._roads[ri]
 		var ids: PackedInt32Array = r["ids"]
@@ -116,6 +117,131 @@ func setup() -> void:
 	for i in range(_walls.size()):
 		var w: Array = _walls[i]
 		g._hash_add(_wall_hash, Rect2(w[0], Vector2.ZERO).expand(w[1]).grow(float(w[6]) + 0.5), CELL, i)
+
+## Where a deck's lanes overlap another road's -- a slip road leaving a motorway up on its
+## embankment, the two halves of a divided road meeting at a narrow median -- the two were
+## lifted on their own and stood 0.15-1.2 m apart there: a step seen across the road and a
+## seam a car drops off (Arvei Nahal's in Tel Aviv). From where they meet, the lesser road
+## (by MAIN_LINE's rank, else the narrower; a deck meeting a street on the ground: the deck)
+## is held at the other's height while its middle lies on the other's asphalt, up to
+## HOLD_REACH along (a slip road mapped 5 m beside Bedford Highway's ramp for 70 m); then its grade is eased back to at most LEVEL_GRADE. (Holding every
+## overlap, not only from a shared point, wrecked roads mapped side by side for hundreds of
+## metres, Bedford Highway beside a slip road 5 m apart: 2 m steps.)
+const LEVEL_GRADE := 0.1
+const HOLD_REACH := 80.0
+var leveled := 0                ## points moved (the report: setup's numbers)
+var leveled_max := 0.0
+static func _rank(r: Dictionary) -> int:
+	var k := String(r["k"])
+	return -1 if k.ends_with("_link") else int(MAIN_LINE.get(k, 0))
+
+func _level_overlaps() -> void:
+	var held := {}   # road -> {point: true}
+	for ri: int in decks:
+		var r: Dictionary = g._roads[ri]
+		if not r["drive"] or not String(r["deck"]) in ["em", "br"]:
+			continue   # (tunnels and cuttings keep their own heights: walls and roofs follow them)
+		var pts: PackedVector2Array = r["pts"]
+		var ids: PackedInt32Array = r["ids"]
+		var ys: PackedFloat32Array = r["ys"]
+		var hw := float(r["w"]) * 0.5
+		for end: int in [0, 1]:
+			var n := ids[0] if end == 0 else ids[ids.size() - 1]
+			for e: Vector2i in g._node_roads[n]:
+				var rj := e.x
+				var o: Dictionary = g._roads[rj]
+				if rj == ri or not o["drive"]:
+					continue
+				var deck: bool = o.has("ys")
+				if deck and not String(o.get("deck", "")) in ["em", "br"]:
+					continue
+				if deck:
+					var mine := _rank(r)
+					var theirs := _rank(o)
+					if mine > theirs or (mine == theirs and hw >= float(o["w"]) * 0.5):
+						continue   # (the other is the lesser: it follows this one)
+				var op: PackedVector2Array = o["pts"]
+				# (not the road it carries straight on from: a ramp's foot overlaps the street it
+				# rises out of, and was held down on it for the whole reach)
+				var mine_out := (pts[1] - pts[0]) if end == 0 else (pts[pts.size() - 2] - pts[pts.size() - 1])
+				var at_o: int = e.y
+				var theirs_out := (op[at_o + 1] - op[at_o]) if at_o + 1 < op.size() else (op[at_o - 1] - op[at_o])
+				if absf(mine_out.angle_to(theirs_out)) > deg_to_rad(120.0):
+					continue
+				var along := 0.0
+				for step in range(1, pts.size() - 1):
+					var k := step if end == 0 else pts.size() - 1 - step
+					along += pts[k].distance_to(pts[k - 1 if end == 0 else k + 1])
+					if along > HOLD_REACH:
+						break
+					var best := INF
+					var oy := 0.0
+					for sj in range(op.size() - 1):
+						var q := Geometry2D.get_closest_point_to_segment(pts[k], op[sj], op[sj + 1])
+						if q.distance_to(pts[k]) < best:
+							best = q.distance_to(pts[k])
+							oy = seg_y(rj, sj, q) if deck else g._h(q)
+					if best > float(o["w"]) * 0.5 + hw - 1.0:
+						break   # (clear of its asphalt: from here it goes its own way)
+					var dy := oy - ys[k]
+					if absf(dy) > 1.2:
+						break
+					if absf(dy) < 0.02:
+						continue
+					leveled += 1
+					leveled_max = maxf(leveled_max, absf(dy))
+					ys[k] = oy
+					if not held.has(ri):
+						held[ri] = {}
+					held[ri][k] = true
+		r["ys"] = ys
+	for ri: int in held:
+		var r: Dictionary = g._roads[ri]
+		var pts: PackedVector2Array = r["pts"]
+		var ys: PackedFloat32Array = r["ys"]
+		var fixed: Dictionary = held[ri]
+		# past the last point held, a road that was going on down (or up) to a height the held
+		# point has already reached gets there in a straight line from it, not by climbing
+		# back first (a slip road held 0.8 m under its own ramp rose 0.6 m again past the hold)
+		for pass_dir: int in [1, -1]:
+			var order := range(1, pts.size()) if pass_dir == 1 else range(pts.size() - 2, -1, -1)
+			for k: int in order:
+				var prev := k - pass_dir
+				if not fixed.has(prev) or fixed.has(k):
+					continue
+				var y0 := ys[prev]
+				var up := ys[k] > y0
+				var m := k
+				while m >= 0 and m < pts.size() and not fixed.has(m) and (ys[m] > y0 if up else ys[m] < y0):
+					m += pass_dir
+				if m < 0 or m >= pts.size() or fixed.has(m):
+					continue   # (never comes back to it: eased below)
+				var cum := PackedFloat32Array([0.0])
+				var q := prev
+				while q != m:
+					cum.append(cum[cum.size() - 1] + pts[q].distance_to(pts[q + pass_dir]))
+					q += pass_dir
+				var total := cum[cum.size() - 1]
+				q = prev + pass_dir
+				var i := 1
+				while q != m:
+					ys[q] = lerpf(y0, ys[m], cum[i] / maxf(total, 0.001))
+					q += pass_dir
+					i += 1
+		for pass_dir: int in [1, -1]:
+			var order := range(1, pts.size()) if pass_dir == 1 else range(pts.size() - 2, -1, -1)
+			var easing := false   # (only on from a held point, while its grade needs it)
+			for k: int in order:
+				var prev := k - pass_dir
+				if fixed.has(prev):
+					easing = true
+				if fixed.has(k) or k == 0 or k == pts.size() - 1 or not easing:
+					continue
+				var room := LEVEL_GRADE * pts[k].distance_to(pts[prev])
+				var was := ys[k]
+				ys[k] = clampf(ys[k], ys[prev] - room, ys[prev] + room)
+				easing = ys[k] != was
+		r["ys"] = ys
 
 ## node n is on some road other than ri that is not a deck
 func _meets_ground(n: int, ri: int) -> bool:
@@ -334,6 +460,9 @@ func open_at(ri: int, p: Vector2, y: float, inner := true) -> bool:
 ## is a retaining wall and a parapet. The bank's width at a point of deck ri (p on its middle
 ## line, `out` the unit way outward on that side, y its surface there): > 0 a bank that wide,
 ## 0 too low to need either, -1 a wall.
+## (from 0.15 m up: from 0.4, the ramp's foot between nothing and the bank was a low wall
+## 2-3 m long standing alone at the bottom of every bank -- 98 of them in Bedford)
+const BANK_FROM := 0.15
 func bank_at(ri: int, p: Vector2, out: Vector2, y: float) -> float:
 	var r: Dictionary = g._roads[ri]
 	if String(r["deck"]) != "em":
@@ -341,7 +470,7 @@ func bank_at(ri: int, p: Vector2, out: Vector2, y: float) -> float:
 	var edge := float(r["w"]) * 0.5 + float(r["side"])
 	var top := p + out * edge
 	var drop: float = y - float(g._h(top))
-	if drop < 0.4:
+	if drop < BANK_FROM:
 		return 0.0
 	var width := drop * BANK
 	# (its foot 1 m clear of any other road's asphalt, sampled every quarter of the way out:
