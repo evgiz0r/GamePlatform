@@ -10,7 +10,11 @@
 - A wall run reaches half its thickness past its ends to close corners, but not into a
   door opening: it did, and the mamad's 30 cm walls left its door 50 cm wide (the tour
   could not get in).
-- The tour finds its way on a 20 cm `AStarGrid2D` of where the walker fits.
+- The tour finds its way on a 20 cm `AStarGrid2D` of where the walker fits. In each room it
+  walks to a metre in front of its one or two best pieces (`INTEREST`, `_stand_by`) and
+  looks at them (`look_at` steps); the head (`_head`) is separate from the body: it glances
+  at pieces it passes (in sight, ahead, not seen in 8 s) and aims at each piece's middle
+  height (`MID_H`). A step bob of 2 cm.
 
 - Furniture: each item is its own MeshInstance3D built round its centre (`_make_item`,
   `_org`), with its rect in `items`; `_blocks()` is walls + solid items, for walking and
