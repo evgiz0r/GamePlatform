@@ -31,9 +31,9 @@ func _load(lvl: int) -> void:
 		if g == null:
 			g = _game(old)
 			continue
-		var eta = g._load_eta
+		var eta = g._load_bar._load_eta
 		if eta != null and is_instance_valid(eta) and (said.is_empty() or said[-1][1] != eta.text):
-			said.append([Time.get_ticks_msec(), eta.text, g._load_fill.size.x / g.LOAD_W])
+			said.append([Time.get_ticks_msec(), eta.text, g._load_bar._load_fill.size.x / g.LoadBar.LOAD_W])
 	var end := Time.get_ticks_msec()
 	print("%s: %.1f s from start to the car" % [g._city_name, (end - t0) / 1000.0])
 	var errs: Array = []

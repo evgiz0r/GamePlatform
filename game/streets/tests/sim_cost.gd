@@ -37,7 +37,7 @@ func _run() -> void:
 		ticks += 1
 		if t >= next_print:
 			next_print += 10.0
-			print("  %3.0f s: %s" % [t, g._prof_avg])
+			print("  %3.0f s: %s" % [t, g._perf._prof_avg])
 	var wall := float(Time.get_ticks_msec() - w0)
 	print("SIM COST %s at time scale %.1f: %.0f game s in %.1f s wall, %d ticks: %.0f ms a game second, %.1f ms a tick" % [
 		g._city_name, Engine.time_scale, t, wall / 1000.0, ticks, wall / t, wall / ticks])

@@ -29,9 +29,9 @@ func _run() -> void:
 	g._set_auto(true)
 	await create_timer(4.0).timeout
 	for i in range(4):   # (as a slow machine's view reads: four hitches, the most it keeps)
-		g._hitches.push_front("%.1f s  %d ms (usual 140)  traffic 18 · people 16 · traffic: follow 11 · car 5 · building (trees) 4 · rest 271" % [
+		g._perf._hitches.push_front("%.1f s  %d ms (usual 140)  traffic 18 · people 16 · traffic: follow 11 · car 5 · building (trees) 4 · rest 271" % [
 			10.0 + i, 240 + 20 * i])
-	g._hitches.resize(mini(g._hitches.size(), 4))   # (the game keeps four)
+	g._perf._hitches.resize(mini(g._perf._hitches.size(), 4))   # (the game keeps four)
 	# and the lines only a browser or a click adds, so the panel is as tall as it gets: the
 	# shaders since the car (web only) and the last time-of-day switch
 	if g._gl_at_car.x < 0.0:

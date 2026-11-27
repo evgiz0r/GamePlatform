@@ -36,7 +36,7 @@ func _run() -> void:
 	_ok("the lists' settings read (%s, %s, %s)" % [g._list_time, g._routes_style, g._cities_style],
 		g._list_time == "night" and g._routes_style == "racer" and g._cities_style == "rules")
 	_ok("folded and assist off, as saved", g._hud_folded and not g._assist)
-	g._hud_tap(g.SHOW_BTN.get_center())
+	g._hud_kit._hud_tap(g.SHOW_BTN.get_center())
 	var d = JSON.parse_string(FileAccess.get_file_as_string(path))
 	_ok("show unfolds and is written back (%s)" % [d], d is Dictionary and d["folded"] == false and d["time"] == "night")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))

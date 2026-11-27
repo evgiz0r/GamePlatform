@@ -26,6 +26,11 @@ merge, re-check (`tools/check_script.sh`, a playtest, the tests below), never fo
 | `sounds.gd` | the engine and the street's own sounds (`_sounds`) |
 | `drive_map.gd` | the drive map drawn from the recorder (`_drive_map`; `_draw_hud` stayed in streets.gd) |
 | `head_look.gd` | the driver's head looking left and right (`_head_look`) |
+| `load_bar.gd` | the loading bar and its estimate from the last load (`_load_bar`) |
+| `hud_buttons.gd` | the HUD's buttons' taps and hit areas, the "more" drawer, the view and time-of-day rounds (`_hud_kit`; the HUD's state, `_hud_btn` and `_draw_hud` stayed in streets.gd) |
+| `minimap.gd` | the minimap: its lines gathered by squares of the map and drawn (`_minimap`) |
+| `perf_view.gd` | where a frame's time goes: frames, hitches, the perf view's text (`_perf`; `_p0`/`_p` and `_prof` stayed in streets.gd, they are called everywhere) |
+| `web_gl.gd` | the browser's shader compiles counted, the lit shaders stripped (`_webgl`) |
 | `traffic.gd` | the AI traffic: spawning, paths, lanes, lights and signs, following, standoffs, drawing (multimeshes per car shape) |
 | `furniture.gd` | street furniture built after the places: power lines, lamps and bus-stop kits, flags, ads, fences and hedges, bike racks and scooters |
 | `drivelog.gd` | the drive recorder (see below) |

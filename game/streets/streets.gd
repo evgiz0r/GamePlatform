@@ -1386,7 +1386,7 @@ func _ready() -> void:
 	# Before super(): the shell's own per-frame hook puts camera shake on top of where
 	# _frame() leaves the camera, so _frame() has to run first.
 	get_tree().process_frame.connect(_frame)
-	_gl_count_on()   # before super() makes the first materials (LIGHT_STRIP_JS)
+	_webgl._gl_count_on()   # before super() makes the first materials (LIGHT_STRIP_JS)
 	super()
 	Bus.palette_changed.connect(_retint_city)
 
@@ -1402,7 +1402,7 @@ func start(_config: Dictionary) -> void:
 	_make_font()
 	_tones()
 	_place = LEVELS[clampi(int(_config.get("level", 1)), 1, LEVELS.size()) - 1]
-	_gl_count_on()
+	_webgl._gl_count_on()
 	if _place.get("routes", false):
 		_route_page = String(_config.get("page", "set"))
 		_route_list_open()   # no city: the list of drives, each starting its own city
@@ -1454,11 +1454,11 @@ func start(_config: Dictionary) -> void:
 	_loading.add_theme_constant_override("outline_size", 5)
 	_loading.z_index = 100
 	add_child(_loading)
-	_load_bar_begin()
+	_load_bar._load_bar_begin()
 	if not await _step("loading " + String(_place["name"])):
 		return
 	var t0 := Time.get_ticks_msec()
-	var gl0 := _gl_count()
+	var gl0 := _webgl._gl_count()
 	if not await _load_city(String(_place["city"])):
 		_loading.queue_free()
 		_build_hud()
@@ -1467,7 +1467,7 @@ func start(_config: Dictionary) -> void:
 	var t1 := Time.get_ticks_msec()
 	_stage_ms["city file (parse, roads fitted, buildings cut)"] = t1 - t0
 	print("[streets] city file read in %d ms" % (t1 - t0))   # (marks for a browser's log: tests/web_load.js)
-	_load_into("setup")
+	_load_bar._load_into("setup")
 	world_area = _bounds
 	_find_start()   # (the squares round it are built first)
 	if not await _build_world():
@@ -1489,18 +1489,18 @@ func start(_config: Dictionary) -> void:
 		_quality_walk()
 	_load_ms = Time.get_ticks_msec() - t0
 	_load_split = [t1 - t0, tw - t1, Time.get_ticks_msec() - tw]
-	_load_gl = _gl_count() - gl0 if gl0.x >= 0.0 else Vector2(-1, 0)
-	_gl_at_car = _gl_count()
-	_load_save()
+	_load_gl = _webgl._gl_count() - gl0 if gl0.x >= 0.0 else Vector2(-1, 0)
+	_gl_at_car = _webgl._gl_count()
+	_load_bar._load_save()
 	_loading.queue_free()
 	var tm := Time.get_ticks_msec()
-	_map_build_cells()
+	_minimap._map_build_cells()
 	_stage("minimap", tm)
 	_build_car()
 	_place_start()
 	_build_hud()
 	_show_load_line()
-	_no_local_lights()
+	_webgl._no_local_lights()
 	_far_ahead()
 	_retint_city()
 	_spawn_people()
@@ -1520,7 +1520,7 @@ func start(_config: Dictionary) -> void:
 	elif _making != "":
 		_open_picker()
 	if _start_time != "day":
-		_set_time_of_day(_start_time)   # (as chosen on the list; it steps through evening)
+		_hud_kit._set_time_of_day(_start_time)   # (as chosen on the list; it steps through evening)
 	track3d(_car, "@")
 	Probe.event("city", {"name": _city_name, "roads": _roads.size(), "buildings": _blds.size(),
 		"trees": _posts.size(), "streets": _streets.size(), "dressing": _dressing, "stage_ms": _stage_ms,
@@ -1553,7 +1553,7 @@ func _warm_up() -> bool:
 	# (on screen first: the frames below are the slow ones, and the text set with them showed
 	# only when they were done -- "8 of 8" stood there seconds)
 	_loading.text = "building %s…\ngetting the graphics ready" % _city_name
-	_load_into("warm", 12)
+	_load_bar._load_into("warm", 12)
 	await get_tree().process_frame
 	await get_tree().process_frame
 	if not is_inside_tree():
@@ -1609,13 +1609,13 @@ func _warm_up() -> bool:
 	var adapter := RenderingServer.get_video_adapter_name().to_lower()
 	var soft := adapter.contains("llvmpipe") or adapter.contains("swiftshader") or adapter.contains("software")
 	var steps := 0 if soft else mini(8, keys.size())
-	_load_n = steps + 4
+	_load_bar._load_n = steps + 4
 	for k in range(steps):
 		for key in keys.slice(k * keys.size() / steps, (k + 1) * keys.size() / steps):
 			for gi: GeometryInstance3D in kinds[key]:
 				gi.visible = true
 		_loading.text = "building %s…\ngetting the graphics ready (%d of %d)" % [_city_name, k + 1, steps + 4]
-		_load_sub(k)
+		_load_bar._load_sub(k)
 		var ts := Time.get_ticks_msec()
 		await get_tree().process_frame
 		_warm_ms.append(Time.get_ticks_msec() - ts)
@@ -1625,7 +1625,7 @@ func _warm_up() -> bool:
 		gi.visible = true   # (the few not reached above: none, but to be sure)
 	for k in range(4):
 		_loading.text = "building %s…\ngetting the graphics ready (%d of %d)" % [_city_name, steps + k + 1, steps + 4]
-		_load_sub(steps + k)
+		_load_bar._load_sub(steps + k)
 		var d := Vector2(cos(k * PI * 0.5), sin(k * PI * 0.5))
 		look_from(Vector3(spot.x - d.x * 20.0, gy + 12.0, spot.y - d.y * 20.0), Vector3(spot.x + d.x * 40.0, gy, spot.y + d.y * 40.0))
 		_sky_follow()
@@ -1761,7 +1761,7 @@ func _load_text() -> String:
 		top.append("%s %.1f s" % [String(p[0]).get_slice(" (", 0), p[1] / 1000.0])
 	var since := ""
 	if _gl_at_car.x >= 0.0:
-		var d := _gl_count() - _gl_at_car
+		var d := _webgl._gl_count() - _gl_at_car
 		since = "\nshaders compiled since the car: %d, %.1f s" % [int(d.x), d.y / 1000.0]
 	if _tod_line != "":
 		since += "\nlast time-of-day switch " + _tod_line
@@ -1798,264 +1798,29 @@ static func _gpu_name() -> String:
 	return _gpu_name_got
 
 ## ---- the browser's shader compiling, counted (web only) ----------------------------------
-## A browser compiles a shader program the first time something is drawn with it (the
-## warm-up's steps) and may keep what it compiled for the next visit (its program cache), when
-## the same calls come back at once. Timed from the page itself, a phone's load line tells which
-## it was: 200 programs in 50 s is compiling, 200 in 0.3 s the cache. The calls are wrapped on
-## WebGL2's prototype, so the engine's context (made long before) goes through them too.
-const GL_COUNT_JS := """(() => {
-	if (window.__glc || typeof WebGL2RenderingContext === 'undefined') return;
-	const c = window.__glc = { n: 0, ms: 0 };
-	const P = WebGL2RenderingContext.prototype;
-	for (const name of ['compileShader', 'linkProgram', 'getShaderParameter', 'getProgramParameter']) {
-		const f = P[name];
-		P[name] = function (...a) {
-			const t = performance.now();
-			const r = f.apply(this, a);
-			c.ms += performance.now() - t;
-			if (name === 'linkProgram') c.n += 1;
-			return r;
-		};
-	}
-})()"""
-## ---- the lit shaders Godot compiles and never draws with (web only) ---------------------
-## When a material's shader is set up, Godot's Compatibility renderer compiles its "default"
-## specialization of every variant at once (shader_gles3.cpp `_initialize_version`,
-## `specialization_default_mask`): for the lit pass, plain and instanced, with the omni, spot
-## and AREA light code all switched on. Draws never use it -- the base pass switches each of
-## those off when no such light touches the instance (rasterizer_scene_gles3.cpp), and this
-## game has only the sun. But Chrome/Edge on Windows hand every program to Direct3D's compiler,
-## and those two cost ~2.4-7.7 s each: 44 of them were ~85% of a cold load (user's PC, 22 Nov
-## 2026: Givatayim's graphics 63 s; area lights alone 2.45 -> 0.47 s a program, omni + spot +
-## area 0.16 s). First the three were defined off in those sources (graphics 63 -> 22 s); even
-## so the 42 never-drawn programs were 7.9 s of the 21 s left. Now they are swapped for a
-## placeholder -- the source's own `#version` line and an empty main -- which costs nothing to
-## compile. Picked out exactly: the base pass, not additive, no DISABLE_LIGHT_OMNI of their
-## own (every draw of the base pass has it here: no omni light). Godot still links them, finds
-## no uniforms in them (locations -1, which it skips) and never draws with them. If one ever
-## IS drawn, `used` counts it and the console says so -- that draw would come out empty;
-## `tests/web_shaders.js` / the load line show it (`window.__lstrip.used`).
-## Since 22 Nov 2026 the page itself installs the same thing before the engine starts
-## (tools/publish_web.sh, for every game: the engine's own default material at start was 2.8 s
-## more), and this one finds `window.__lstrip` and does nothing -- it stays for a web export
-## without that patch. And it is safe with any lights: a draw's base pass always sets
-## DISABLE_LIGHTMAP (or a lightmap's own switch), so no draw uses the default specialization.
-## `_no_local_lights` still warns if an omni, spot or area light appears (`used` says more).
-const LIGHT_STRIP_JS := """(() => {
-	if (window.__lstrip || typeof WebGL2RenderingContext === 'undefined') return;
-	const c = window.__lstrip = { n: 0, used: 0 };
-	const P = WebGL2RenderingContext.prototype;
-	const types = new WeakMap(), fake = new WeakSet(), fakeProg = new WeakSet();
-	const cs = P.createShader, ss = P.shaderSource, as = P.attachShader, up = P.useProgram;
-	P.createShader = function (t) { const s = cs.call(this, t); if (s) types.set(s, t); return s; };
-	P.shaderSource = function (s, src) {
-		if (typeof src === 'string' && src.indexOf('#define BASE_PASS') >= 0
-				&& src.indexOf('#define USE_ADDITIVE_LIGHTING') < 0 && src.indexOf('#define DISABLE_LIGHT_OMNI') < 0) {
-			const v = src.slice(0, src.indexOf('\\n'));
-			src = types.get(s) === this.VERTEX_SHADER
-				? v + '\\nvoid main() { gl_Position = vec4(0.0); }\\n'
-				: v + '\\nprecision mediump float;\\nout vec4 frag_color;\\nvoid main() { frag_color = vec4(1.0, 0.0, 1.0, 1.0); }\\n';
-			fake.add(s);
-			if (types.get(s) !== this.VERTEX_SHADER) c.n += 1;   // programs, not halves
-		}
-		return ss.call(this, s, src);
-	};
-	P.attachShader = function (p, s) { if (fake.has(s)) fakeProg.add(p); return as.call(this, p, s); };
-	let cur = null;
-	P.useProgram = function (p) { cur = p; return up.call(this, p); };
-	for (const name of ['drawArrays', 'drawElements', 'drawArraysInstanced', 'drawElementsInstanced', 'drawRangeElements']) {
-		const d = P[name];
-		P[name] = function (...a) {
-			if (cur && fakeProg.has(cur)) {
-				if (c.used++ === 0) console.warn('[streets] LIGHT_STRIP_JS: a placeholder program was drawn with');
-			}
-			return d.apply(this, a);
-		};
-	}
-})()"""
-
-## warn if a light the strip above assumes away is in the scene
-func _no_local_lights() -> void:
-	for n in get_tree().root.find_children("*", "Light3D", true, false):
-		if not (n is DirectionalLight3D):
-			push_warning("[streets] %s is a %s: LIGHT_STRIP_JS assumes the game has none" % [n.name, n.get_class()])
-			return
+## In `web_gl.gd` (`WebGL`, made once: `_webgl`).
+const WebGL := preload("res://game/streets/web_gl.gd")
+var _webgl := WebGL.new(self)
 
 var _load_gl := Vector2(-1, 0)       ## the load's programs linked and ms in the compile calls (-1: not a browser)
 var _gl_at_car := Vector2(-1, 0)     ## the count when the car was shown
-
-static func _gl_count_on() -> void:
-	if OS.has_feature("web"):
-		JavaScriptBridge.eval(LIGHT_STRIP_JS, true)
-		JavaScriptBridge.eval(GL_COUNT_JS, true)
-
-## (programs linked, ms spent in the compile and link calls) so far; x -1 where not counted
-static func _gl_count() -> Vector2:
-	if not OS.has_feature("web"):
-		return Vector2(-1, 0)
-	var v = JavaScriptBridge.eval("window.__glc ? window.__glc.n + ',' + Math.round(window.__glc.ms) : ''", true)
-	var t := str(v) if v != null else ""
-	if t == "":
-		return Vector2(-1, 0)
-	return Vector2(float(t.get_slice(",", 0)), float(t.get_slice(",", 1)))
 
 ## show what is being built and let a frame be drawn; false if the game was left meanwhile
 func _step(what: String) -> bool:
 	if not is_inside_tree():
 		return false
 	_loading.text = "building %s…\n%s" % [_city_name if _city_name != "" else String(_place["name"]), what]
-	_load_tick()
+	_load_bar._load_tick()
 	await get_tree().process_frame
 	await get_tree().process_frame
 	return is_inside_tree()
 
 ## ---- the loading bar ----------------------------------------------------------------------
-## A bar under the loading text and "about N s" (user: "those steps where I don't know how long
-## I have to wait -- sometimes 3 seconds, sometimes 20"). The estimate is this device's own last
-## load of the city (LOAD_LOG): the city file, the set-up, one square, the warm-up -- the last
-## kept twice, as it was on the same build (the browser kept its compiled shaders) and on the
-## first load of a new build (it compiles them again: the slow case). No load of this city
-## yet: another city's, its file scaled by size. None at all: the bar by phase, no seconds.
-## Slower or quicker than last time so far, the rest is taken to be so too (`pace`).
-const LOAD_LOG := "user://streets_load.json"
-const LOAD_PHASES := ["file", "setup", "squares", "warm"]
-const LOAD_W := 400.0                ## the bar's width (the loading text's)
-var _load_est := {}                  ## ms: file, setup, square (each), n (squares), warm; empty: no history
-var _load_at := {}                   ## phase -> ms it began
-var _load_phase := "file"
-var _load_n := 1                     ## steps in the phase (squares; the warm-up's frames)
-var _load_i := 0                     ## the step it is on
-var _load_i_at := 0                  ## ms that step began
-var _load_squares := 1.0             ## squares built behind the text this time
-var _load_fill: ColorRect
-var _load_eta: Label
-var _build_id := ""                  ## res://build.txt: which build this is
+## In `load_bar.gd` (`LoadBar`, made once: `_load_bar`).
+const LoadBar := preload("res://game/streets/load_bar.gd")
+var _load_bar := LoadBar.new(self)
 
-func _load_bar_begin() -> void:
-	var track := ColorRect.new()
-	track.color = Palette.col("bg_alt")
-	track.position = Vector2(0, 50)
-	track.size = Vector2(LOAD_W, 6)
-	_loading.add_child(track)
-	_load_fill = ColorRect.new()
-	_load_fill.color = Palette.col("accent")
-	_load_fill.position = track.position
-	_load_fill.size = Vector2(0, 6)
-	_loading.add_child(_load_fill)
-	_load_eta = UIKit.label("", 13, "ink")
-	_load_eta.add_theme_font_override("font", _font)
-	_load_eta.add_theme_color_override("font_outline_color", Palette.col("bg"))
-	_load_eta.add_theme_constant_override("outline_size", 4)
-	_load_eta.position = Vector2(0, 60)
-	_load_eta.size = Vector2(LOAD_W, 20)
-	_load_eta.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_load_eta.modulate.a = 0.8
-	_loading.add_child(_load_eta)
-	if FileAccess.file_exists("res://build.txt"):
-		_build_id = FileAccess.get_file_as_string("res://build.txt").strip_edges()
-	_load_est = _load_guess()
-	_load_into("file")
-
-func _load_log() -> Dictionary:
-	if not FileAccess.file_exists(LOAD_LOG):
-		return {}
-	var d = JSON.parse_string(FileAccess.get_file_as_string(LOAD_LOG))
-	return d if d is Dictionary else {}
-
-func _city_kb(id: String) -> float:
-	var f := FileAccess.open(get_script().resource_path.get_base_dir() + "/cities/" + id + ".json", FileAccess.READ)
-	return f.get_length() / 1024.0 if f != null else 0.0
-
-## what this load should take, from the log
-func _load_guess() -> Dictionary:
-	var log := _load_log()
-	var city := String(_place["city"])
-	var mine: Dictionary = log.get(city, {})
-	var src := mine
-	var scale := 1.0
-	if not src.has("square"):   # this city never loaded here: another one's, the file scaled
-		src = {}
-		for k: String in log:
-			if (log[k] as Dictionary).has("square") and float((log[k] as Dictionary).get("file_kb", 0.0)) > 0.0:
-				src = log[k]
-				break
-		if src.is_empty():
-			return {}
-		scale = _city_kb(city) / float(src["file_kb"])
-	var new_build := String(mine.get("build", "")) != _build_id
-	return {"file": float(src["file"]) * scale, "setup": float(src["setup"]), "square": float(src["square"]),
-		"n": float(src["n"]), "warm": float(src["warm_new"] if new_build else src["warm"])}
-
-func _load_into(phase: String, n: int = 1) -> void:
-	_load_phase = phase
-	_load_at[phase] = Time.get_ticks_msec()
-	_load_n = maxi(n, 1)
-	_load_i = 0
-	_load_i_at = _load_at[phase]
-	if phase == "squares":
-		_load_squares = float(maxi(n, 1))
-		if not _load_est.is_empty():
-			_load_est["n"] = _load_squares
-	_load_tick()
-
-func _load_sub(i: int) -> void:
-	_load_i = i
-	_load_i_at = Time.get_ticks_msec()
-	_load_tick()
-
-func _load_phase_ms(phase: String) -> float:
-	return float(_load_est["square"]) * float(_load_est["n"]) if phase == "squares" else float(_load_est[phase])
-
-func _load_tick() -> void:
-	if _load_fill == null or not is_instance_valid(_load_fill):
-		return
-	var idx := LOAD_PHASES.find(_load_phase)
-	var through := clampf(float(_load_i) / _load_n, 0.0, 1.0)
-	if _load_est.is_empty():   # the first load on this device: the bar by phase alone
-		var w := [0.15, 0.1, 0.5, 0.25]
-		var f := 0.0
-		for i in range(idx):
-			f += w[i]
-		_load_fill.size.x = LOAD_W * (f + w[idx] * through)
-		_load_eta.text = "timing it, for next time"
-		return
-	var now := Time.get_ticks_msec()
-	var total := 0.0
-	var done := 0.0
-	for i in range(LOAD_PHASES.size()):
-		var ms := _load_phase_ms(LOAD_PHASES[i])
-		total += ms
-		if i < idx:
-			done += ms
-	var step := _load_phase_ms(_load_phase) / _load_n
-	done += step * _load_i + minf(float(now - _load_i_at), step * 0.9)
-	var spent := float(now - int(_load_at["file"]))
-	var pace := clampf(spent / done, 0.5, 3.0) if done > 1500.0 else 1.0
-	var left := (total - done) * pace / 1000.0
-	_load_fill.size.x = LOAD_W * clampf(done / maxf(total, 1.0), 0.0, 1.0)
-	_load_eta.text = "almost there" if left < 1.5 else "about %d s" % ceili(left)
-
-## what this load took, for the next one's estimate
-func _load_save() -> void:
-	if not _load_at.has("warm") or not _load_at.has("squares"):
-		return
-	var now := Time.get_ticks_msec()
-	var log := _load_log()
-	var city := String(_place["city"])
-	var old: Dictionary = log.get(city, {})
-	var squares := float(int(_load_at["warm"]) - int(_load_at["squares"]))
-	var warm := float(now - int(_load_at["warm"]))
-	var same := old.has("warm") and String(old.get("build", "")) == _build_id
-	var rec := {"file": float(int(_load_at["setup"]) - int(_load_at["file"])),
-		"setup": float(int(_load_at["squares"]) - int(_load_at["setup"])),
-		"square": squares / maxf(_load_squares, 1.0), "n": _load_squares, "file_kb": _city_kb(city), "build": _build_id,
-		"warm": warm if same or not old.has("warm") else float(old["warm"]),
-		"warm_new": float(old.get("warm_new", warm)) if same else warm}
-	log[city] = rec
-	var f := FileAccess.open(LOAD_LOG, FileAccess.WRITE)
-	if f != null:
-		f.store_string(JSON.stringify(log))
-
+## ---- leaving the game; the screen kept on while driving ---------------------------------
 func _exit_tree() -> void:
 	SaveData.data["volume_sfx"] = _sfx_was
 	Engine.physics_ticks_per_second = _base_hz   # (slow frames' 30 a second: the engine's, every game's)
@@ -2095,6 +1860,7 @@ func _keep_screen_on(on: bool) -> void:
 	if OS.has_feature("web"):
 		JavaScriptBridge.eval(WAKE_JS + ("window.__streetsWake.start();" if on else "window.__streetsWake.stop();"), true)
 
+## ---- fitting the city file: divided roads, widths, buildings back off the road ----------
 ## Divided roads: OSM maps each carriageway as a road of its own, one-way, and with no width
 ## given the bake guesses the class's -- 10 m for a secondary -- for each half. Ben Gurion's
 ## halves are 7-10 m apart centre to centre, so they overlapped, and each one's kerb and
@@ -2640,7 +2406,7 @@ const LOAD_PARTS := 11
 func _load_part(what: String, i: int) -> int:
 	if _loading != null and is_inside_tree():
 		_loading.text = "building %s…\nreading the map: %s (%d of %d)" % [_city_name if _city_name != "" else String(_place.get("name", "")), what, i, LOAD_PARTS]
-		_load_tick()
+		_load_bar._load_tick()
 		await get_tree().process_frame
 	return Time.get_ticks_usec()
 
@@ -3020,9 +2786,9 @@ func _build_world() -> bool:
 	world.visible = false
 	_gardens_split = not all_first and OS.get_environment("STREETS_GARDENS_SPLIT") != "0"   # (=0: all while loading, as before: tests/gardens_later.gd)
 	_gardens_from = _pos
-	_load_into("squares", near.size())
+	_load_bar._load_into("squares", near.size())
 	for i in range(near.size()):
-		_load_sub(i)
+		_load_bar._load_sub(i)
 		if not await _step("the streets round the start (%d of %d)" % [i + 1, near.size()]):
 			return false
 		_fg_text = _loading.text
@@ -3276,7 +3042,7 @@ func _pause() -> void:
 	if _fg_build:   # loading: no game frame to wait for -- just let one be drawn
 		_fg_spin += 1
 		_loading.text = _fg_text + ("\n" + _fg_part if _fg_part != "" else "") + "  " + ["·  ", " · ", "  ·", " · "][_fg_spin % 4]
-		_load_tick()
+		_load_bar._load_tick()
 		await get_tree().process_frame
 		_yield_at = Time.get_ticks_usec() + FG_US
 		return
@@ -9051,7 +8817,7 @@ func _set_wet(on: bool) -> void:
 ## the time-of-day button: day, then evening, then night, then day again
 func _next_time() -> void:
 	var t0 := Time.get_ticks_usec()
-	var gl0 := _gl_count()
+	var gl0 := _webgl._gl_count()
 	var to := "day" if _night else ("night" if _evening else "evening")
 	if _night:
 		_weekday = (_day() + 1) % 7   # (night to day: the next morning)
@@ -9077,7 +8843,7 @@ func _tod_watch(to: String, gl0: Vector2, ms: float) -> void:
 		worst = maxf(worst, (Time.get_ticks_usec() - tf) / 1000.0)
 	_tod_line = "to %s: %.0f ms at the click, then the slowest frame %d ms" % [to, ms, int(worst)]
 	if gl0.x >= 0.0:
-		var d := _gl_count() - gl0
+		var d := _webgl._gl_count() - gl0
 		_tod_line += ", %d shaders compiled (%.1f s)" % [int(d.x), d.y / 1000.0]
 	print("[streets] time of day " + _tod_line)
 
@@ -16665,7 +16431,7 @@ func _physics_process(dt: float) -> void:
 	if _paused:   # paused (or looking from above): everything holds; the engine falls quiet
 		_sounds._engine_tick(dt)
 		return
-	_prof_ticks += 1
+	_perf._prof_ticks += 1
 	_p0()
 	_signals_tick(dt)
 	if _wave != null:
@@ -16836,7 +16602,7 @@ var _view_pos := Vector2.ZERO        ## where the car is drawn this frame (the m
 var _view_yaw := 0.0
 
 func _frame() -> void:
-	_prof_frame()
+	_perf._prof_frame()
 	if not _loaded or _car == null or _picker != null:
 		return
 	_p0()
@@ -17188,36 +16954,14 @@ func _settle() -> bool:
 	return true
 
 ## ---- where a frame's time goes ------------------------------------------------------------
-## Every part of a physics tick and of a drawn frame is timed (the script's own work, in
-## microseconds). The time from one drawn frame to the next that no part accounts for is
-## the engine's: drawing the 3D, the shadows, the browser. A frame much slower than the ones
-## round it is a hitch: the parts that took its time are kept (the perf view, P or a tap on
-## the fps text, shows them with a graph of the last frames) and reported as a "hitch" event
-## and a [hitch] line, so a playtest names what chokes.
-const PERF_FRAMES := 150
-const PERF_RECT := Rect2(486, 74, 146, 20)   ## the fps text: tap it for the perf view
-const PERF_GRAPH := Rect2(8, 96, 150, 30)    ## the perf view's frame times, as bars
+## In `perf_view.gd` (`PerfView`, made once: `_perf`).
+const PerfView := preload("res://game/streets/perf_view.gd")
+var _perf := PerfView.new(self)
+
 var _prof := {}                      ## part -> microseconds since the last drawn frame began
 var _prof_t := 0
-var _frame_at := 0
-var _frame_ms := PackedFloat32Array()   ## the last frames' times, ms, oldest overwritten first
-var _frame_i := 0
-var _hitches: Array = []             ## newest first, a few: "12.3 s  95 ms  people 61 · rest 30"
-var _hitch_n := 0
-var _prof_sum := {}                  ## part -> microseconds over the current 2 s spell
-var _prof_n := 0                     ## frames in it
-var _prof_wall := 0.0                ## their total time, ms
-var _prof_spell := 0
-var _prof_avg := ""                  ## the last spell's average frame, part by part
-## how many parts the average names (5; STREETS_PROF_PARTS=n for tests that want them all)
-var _PROF_WORDS := int(OS.get_environment("STREETS_PROF_PARTS")) if OS.get_environment("STREETS_PROF_PARTS") != "" else 5
-var _prof_ticks := 0                 ## physics ticks in the current spell (a slow frame runs several)
 var _perf_view := false
-## "--perf-log" among the command line's user args (a test in a browser): each 2 s spell's frame
-## rate and its average frame, part by part, printed
-var _perf_log := OS.get_cmdline_user_args().has("--perf-log")
 var _perf_lbl: Label
-
 func _p0() -> void:
 	_prof_t = Time.get_ticks_usec()
 
@@ -17229,90 +16973,8 @@ func _p(part: String) -> void:
 
 ## at the start of every drawn frame: the one before is done (its drawing, then this frame's
 ## physics ticks), so its time and its parts are complete
-func _prof_frame() -> void:
-	var now := Time.get_ticks_usec()
-	if _frame_at == 0:
-		_frame_at = now
-		_prof = {}
-		return
-	var ms := (now - _frame_at) / 1000.0
-	_frame_at = now
-	if _frame_ms.size() < PERF_FRAMES:
-		_frame_ms.append(ms)
-	else:
-		_frame_ms[_frame_i] = ms
-		_frame_i = (_frame_i + 1) % PERF_FRAMES
-	if ms > 25.0 and _frame_ms.size() > 30:
-		var sorted := _frame_ms.duplicate()
-		sorted.sort()
-		var typical := sorted[sorted.size() / 2]
-		if ms > maxf(25.0, typical * 2.0 + 8.0):
-			_hitch(ms, typical)
-	# the average frame over a 2 s spell, part by part: what it costs all the time, not in spikes
-	for k: String in _prof:
-		_prof_sum[k] = int(_prof_sum.get(k, 0)) + int(_prof[k])
-	_prof_n += 1
-	_prof_wall += ms
-	if now - _prof_spell > 2000000 and _prof_n > 0:
-		var parts: Array = []
-		var script_ms := 0.0
-		for k: String in _prof_sum:
-			var pm := float(_prof_sum[k]) / 1000.0 / _prof_n
-			if not ":" in k:
-				script_ms += pm
-			parts.append([pm, k])
-		parts.sort_custom(func(a: Array, b: Array) -> bool: return a[0] > b[0])
-		var words: Array = []
-		for i in range(mini(_PROF_WORDS, parts.size())):
-			words.append(("%s %.2f" if _PROF_WORDS > 5 else "%s %.1f") % [parts[i][1], float(parts[i][0])])
-		_prof_avg = "average %.1f ms: drawing and engine %.1f · script %.1f in %.1f ticks (%s)" % [_prof_wall / _prof_n,
-			_prof_wall / _prof_n - script_ms, script_ms, float(_prof_ticks) / _prof_n, ", ".join(words)]
-		_prof_ticks = 0
-		if _perf_log:
-			print("[perf] quality %d, %.1f fps%s; %s; %s" % [_quality, 1000.0 * _prof_n / maxf(_prof_wall, 1.0),
-				" (the city still building)" if _bg_build else "", _prof_avg, _gpu_line()])
-		_prof_sum = {}
-		_prof_n = 0
-		_prof_wall = 0.0
-		_prof_spell = now
-	_prof = {}
 
-func _hitch(ms: float, typical: float) -> void:
-	var parts: Array = []
-	var script_ms := 0.0
-	for k: String in _prof:
-		var pm := float(_prof[k]) / 1000.0
-		if not ":" in k:   # "traffic: route" is already inside "traffic"
-			script_ms += pm
-		parts.append([pm, k])
-	parts.sort_custom(func(a: Array, b: Array) -> bool: return a[0] > b[0])
-	var words: Array = []
-	for i in range(mini(5, parts.size())):
-		if float(parts[i][0]) >= 1.0:
-			var part: String = parts[i][1]
-			if part == "building" and _bstep_slow != "":   # which step of a square ran long (_pause)
-				part = "building (%s)" % _bstep_slow
-			words.append("%s %d" % [part, int(round(float(parts[i][0])))])
-	words.append("rest %d" % int(round(ms - script_ms)))
-	_bstep_slow = ""
-	_bstep_slow_us = 0
-	var line := "%.1f s  %d ms (usual %d)  %s" % [Time.get_ticks_msec() / 1000.0, int(ms), int(typical), " · ".join(words)]
-	_hitches.push_front(line)
-	if _hitches.size() > 4:
-		_hitches.pop_back()
-	_hitch_n += 1
-	print("[hitch] ", line)
-	if _hitch_n <= 40:
-		Probe.event("hitch", {"ms": int(ms), "usual": int(typical), "parts": " · ".join(words),
-			"nodes": int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))})
-
-## the slowest of the last frames (ms)
-func _worst_ms() -> float:
-	var w := 0.0
-	for v in _frame_ms:
-		w = maxf(w, v)
-	return w
-
+## ---- driving: the car's pose, the controls, back on the road, the map's edge ------------
 ## after a jump (the start, "back on the road"): no blending from where it was, camera
 ## straight behind
 func _snap_pose() -> void:
@@ -25325,7 +24987,7 @@ func _build_hud() -> void:
 	_map.size = Vector2(118, 118)
 	_map.clip_contents = true
 	_map.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_map.draw.connect(_draw_map)
+	_map.draw.connect(_minimap._draw_map)
 	_hud.add_child(_map)
 
 ## res://build.txt, as tools/publish_web.sh writes it ("2026-11-21 10:05 UTC 79f2bc6": when it
@@ -25333,7 +24995,7 @@ func _build_hud() -> void:
 ## "build 21 Nov 12:05 Israel · 79f2bc6".
 ## With no file (run from the project, not a published build): "dev build".
 func _build_line() -> String:
-	var t := _build_id
+	var t := _load_bar._build_id
 	if t == "" and FileAccess.file_exists("res://build.txt"):
 		t = FileAccess.get_file_as_string("res://build.txt").strip_edges()
 	if t == "":
@@ -25400,11 +25062,11 @@ func _tick_hud() -> void:
 		_load_lbl.visible = not _perf_view
 	_build_lbl.text = _build_far_txt() if _perf_view else _build_near_txt
 	if _fps_lbl.visible:
-		_fps_lbl.text = "%d fps · worst %d ms · quality %d" % [Engine.get_frames_per_second(), int(_worst_ms()), _quality]
+		_fps_lbl.text = "%d fps · worst %d ms · quality %d" % [Engine.get_frames_per_second(), int(_perf._worst_ms()), _quality]
 	if _perf_view:
 		_perf_lbl.text = "%s · frame time, last %d frames (lines: 16 and 33 ms)\n%s\n%s\nquality ladder: %s\nhitches (slowest parts, ms):\n%s\n%s" % [
-			_ver_lbl.text, _frame_ms.size(), _prof_avg, _gpu_line(), " · ".join(_q_log) if not _q_log.is_empty() else "no step yet",
-			"\n".join(_hitches) if not _hitches.is_empty() else "none yet", _load_text()]
+			_ver_lbl.text, _perf._frame_ms.size(), _perf._prof_avg, _gpu_line(), " · ".join(_q_log) if not _q_log.is_empty() else "no step yet",
+			"\n".join(_perf._hitches) if not _perf._hitches.is_empty() else "none yet", _load_text()]
 	if _dest_on:
 		var left := _pos.distance_to(_dest)
 		if _auto and _ap_pts.size() > 1:
@@ -25445,14 +25107,14 @@ func _draw_hud() -> void:
 	var bg := Palette.col("bg")
 	if _drive_map._trace_view:
 		_drive_map._draw_trace()
-	if _perf_view and not _frame_ms.is_empty():
+	if _perf_view and not _perf._frame_ms.is_empty():
 		# the last frames' times as bars, oldest on the left; 16 and 33 ms marked
-		var box := PERF_GRAPH
+		var box := PerfView.PERF_GRAPH
 		_hud.draw_rect(box, Color(bg, 0.7))
-		var n := _frame_ms.size()
-		var w := box.size.x / PERF_FRAMES
+		var n := _perf._frame_ms.size()
+		var w := box.size.x / PerfView.PERF_FRAMES
 		for i in range(n):
-			var v: float = _frame_ms[(_frame_i + i) % n] if n == PERF_FRAMES else _frame_ms[i]
+			var v: float = _perf._frame_ms[(_perf._frame_i + i) % n] if n == PerfView.PERF_FRAMES else _perf._frame_ms[i]
 			var h := minf(v / 50.0, 1.0) * box.size.y
 			var c := Palette.col("friend") if v < 20.0 else (Palette.col("warn") if v < 40.0 else Palette.col("hazard"))
 			_hud.draw_rect(Rect2(box.position.x + i * w, box.end.y - h, maxf(w, 1.0), h), c)
@@ -25499,8 +25161,8 @@ func _draw_hud() -> void:
 		# on the right: the drawer and folding, the camera, looking round
 		_hud_btn(MORE_BTN, "more" if not _more_open else "close", Palette.col("accent"), _more_open, 11)
 		_hud_btn(FOLD_BTN, "–", Palette.col("ink"), false, 13)
-		_hud_btn(VIEW_BTN, _view_name(), Palette.col("player"), _cockpit, 11)
-		if _map_btn_shown():
+		_hud_btn(VIEW_BTN, _hud_kit._view_name(), Palette.col("player"), _cockpit, 11)
+		if _hud_kit._map_btn_shown():
 			_hud_btn(MAP_BTN, "back" if _zoom > 0.0 else "map", Palette.col("friend"), _zoom > 0.0, 11)
 		# (and the quality beside it, of the top level: the user saw it fall on every machine and
 		# could not tell when, 23 Nov)
@@ -25547,20 +25209,19 @@ func _draw_hud() -> void:
 		if not held and not _stick_used:   # (the hint until the stick has been driven with once)
 			_hud.draw_string(_font, c + Vector2(-60, STICK_R + 18), "hold & drag to drive", HORIZONTAL_ALIGNMENT_CENTER, 120, 9, Color(ink, 0.6))
 	if _paused and not _zoomed() and not _more_open:   # (pause lives in the drawer: the way back out, here)
-		_hud_btn(RESUME_BTN, "resume", Palette.col("warn"), true, 12)
-	_draw_more()
+		_hud_btn(HudButtons.RESUME_BTN, "resume", Palette.col("warn"), true, 12)
+	_hud_kit._draw_more()
 ## ---- the HUD's buttons, the "more" drawer, folding (see AUTO_BTN for the layout) ----------
+## In `hud_buttons.gd` (`HudButtons`, made once: `_hud_kit`).
+const HudButtons := preload("res://game/streets/hud_buttons.gd")
+var _hud_kit := HudButtons.new(self)
 
-const RESUME_BTN := Rect2(280, 74, 80, 24)  ## paused by hand: the way back out (pause is in the drawer)
-const MORE_RECT := Rect2(246, 40, 314, 282) ## the drawer, left of the right-hand buttons and above the bottom row
-const KEYS_RECT := Rect2(110, 46, 420, 262)
 var _more_open := false
 var _keys_open := false
 var _hud_folded := false   ## every button folded away to one "show" (FOLD_BTN)
 var _stick_used := false   ## the stick driven with once: its hint has done its job
 var _tod_busy := false     ## a time of day on its way (_set_time_of_day steps through _next_time)
 var _mouse_at := Vector2.INF   ## a real mouse's position (not a touch's): the button under it is lit as hovered
-
 ## one button: a dark box, its outline and text in `col` when lit (the thing is ON) or `strong`
 ## (always worth seeing, as "go to…"), ink when off; lit ones filled with a wash of it too.
 ## Under the mouse it fills as the shell's buttons do on hover (UIKit: the accent darkened,
@@ -25588,423 +25249,10 @@ func _hud_btn(r: Rect2, text: String, col: Color, lit: bool, size: int, strong :
 
 ## the camera now, as the button says it: chase, seat (on foot: behind, eyes); from above,
 ## the one it lands in
-func _view_name() -> String:
-	if _zoomed():
-		return ("eyes" if _walking else "seat") if _zoom_seat else ("behind" if _walking else "chase")
-	if _walking:
-		return "eyes" if _cockpit else "behind"
-	return "seat" if _cockpit else "chase"
-
-## the camera: chase <-> seat. From above, it says which it lands in and a tap swaps that
-## (the view from above is the map button's now, MAP_BTN)
-func _next_view() -> void:
-	if _zoomed():
-		_zoom_seat = not _zoom_seat
-	else:
-		_set_cockpit(not _cockpit)
-
-## the map button: up over the city (paused; drag, pinch, hold a street to drive there), or
-## back down to the car, the city going on again if it was going before
-## (not under the perf view's panel, which covers the minimap too)
-func _map_btn_shown() -> bool:
-	return not _hud_folded and not _perf_view and not _drive_map._trace_view
-
-func _toggle_map() -> void:
-	if _zoom > 0.0:
-		_zoom_set(0.0)
-	else:
-		_zoom_set(MAP_ZOOM)
-		_more_open = false
-
-func _time_now() -> String:
-	return "night" if _night else ("evening" if _evening else "day")
-
-## straight to a time of day: _next_time round until there (it goes day, evening, night)
-func _set_time_of_day(to: String) -> void:
-	if _tod_busy:
-		return
-	_tod_busy = true
-	for i in range(3):
-		if _time_now() == to or not is_inside_tree():
-			break
-		await _next_time()
-	_tod_busy = false
-
-## the drawer's rows: [label, y, [[text, key]...], key now, what]
-func _more_rows() -> Array:
-	return [
-		["time of day", 58, [["day", "day"], ["evening", "evening"], ["night", "night"]], _time_now(), "time"],
-		["road", 100, [["dry", "dry"], ["wet", "wet"]], "wet" if _wet else "dry", "road"],
-		["autodrive", 142, [["keeps rules", "rules"], ["green wave", "wave"], ["racer", "racer"]], _ap_style, "style"],
-		["steering assist, when you drive", 184, [["off", "off"], ["on", "on"]], "on" if _assist else "off", "assist"],
-		["", 220, [["resume" if _paused else "pause", "pause"], ["keys", "keys"], ["perf view", "perf"]],
-			"pause" if _paused else ("perf" if _perf_view or _drive_map._trace_view else ""), "act"],
-	]
-
-func _seg_rect(row: Array, i: int) -> Rect2:
-	var n: int = (row[2] as Array).size()
-	var w := (MORE_RECT.size.x - 24.0 - 4.0 * (n - 1)) / n
-	return Rect2(MORE_RECT.position.x + 12.0 + i * (w + 4.0), float(row[1]) + 6.0, w, 24.0)
-
-func _draw_more() -> void:
-	var ink := Palette.col("ink")
-	var bg := Palette.col("bg")
-	if _more_open:
-		_hud.draw_rect(MORE_RECT, Color(bg, 0.92))
-		_hud.draw_rect(MORE_RECT, Color(Palette.col("accent"), 0.6), false, 1.5)
-		for row: Array in _more_rows():
-			if String(row[0]) != "":
-				_hud.draw_string(_font, Vector2(MORE_RECT.position.x + 12.0, float(row[1]) + 2.0), String(row[0]),
-					HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(ink, 0.7))
-			var opts: Array = row[2]
-			for i in range(opts.size()):
-				var col := Palette.col("hazard") if String(opts[i][1]) == "racer" else Palette.col("accent")
-				_hud_btn(_seg_rect(row, i), String(opts[i][0]), col, String(opts[i][1]) == String(row[3]), 11)
-		# what a screenshot needs to say (it sat over the map; the user: the small notes took room)
-		var x := MORE_RECT.position.x + 12.0
-		var w := MORE_RECT.size.x - 24.0
-		_hud.draw_string(_font, Vector2(x, 262), "%d fps · worst %d ms · quality %d" % [Engine.get_frames_per_second(), int(_worst_ms()), _quality],
-			HORIZONTAL_ALIGNMENT_LEFT, w, 9, Color(ink, 0.75))
-		_hud.draw_string(_font, Vector2(x, 274), _build_line(), HORIZONTAL_ALIGNMENT_LEFT, w, 9, Color(ink, 0.75))
-		var ll := _load_line()
-		if ll != "":
-			_hud.draw_multiline_string(_font, Vector2(x, 285), ll, HORIZONTAL_ALIGNMENT_LEFT, w, 8, 2, Color(ink, 0.6))
-		if not _credits.is_empty():
-			_hud.draw_multiline_string(_font, Vector2(x, 306), _credit_line(_credits), HORIZONTAL_ALIGNMENT_LEFT, w, 8, 2, Color(ink, 0.6))
-	if _keys_open:
-		_hud.draw_rect(KEYS_RECT, Color(bg, 0.95))
-		_hud.draw_rect(KEYS_RECT, Color(Palette.col("accent"), 0.6), false, 1.5)
-		_hud_text(KEYS_RECT.position + Vector2(0, 20), "keys", KEYS_RECT.size.x, 13, Palette.col("player"))
-		var keys := [
-			["arrows / WASD", "drive"], ["space · shift", "autodrive on · off"],
-			["Q · E", "indicators"], ["H", "horn"],
-			["L", "lights"], ["C", "seat / chase"],
-			["M · Z", "map · up over the city"], ["wheel · - =", "zoom"],
-			["G", "look round"], ["F", "walk / get in"],
-			["K", "pause"], ["V · R", "green wave · racer"],
-			["P", "perf view"], ["", ""],
-		]
-		for i in range(keys.size()):
-			var at := KEYS_RECT.position + Vector2(16.0 + (i % 2) * 204.0, 46.0 + (i / 2) * 26.0)
-			_hud.draw_string(_font, at, String(keys[i][0]), HORIZONTAL_ALIGNMENT_LEFT, 84, 11, Palette.col("accent"))
-			_hud.draw_string(_font, at + Vector2(88, 0), String(keys[i][1]), HORIZONTAL_ALIGNMENT_LEFT, 110, 11, ink)
-		_hud_text(Vector2(KEYS_RECT.position.x, KEYS_RECT.end.y - 10), "tap anywhere to close", KEYS_RECT.size.x, 9, Color(ink, 0.6))
-
-## a tap in the drawer (or the keys card, or anywhere while either is open): true if it took it
-func _more_tap(p: Vector2) -> bool:
-	if _keys_open:
-		_keys_open = false
-		return true
-	if not _more_open:
-		return false
-	if MORE_BTN.grow(3).has_point(p) or not MORE_RECT.has_point(p):
-		_more_open = false   # (a tap outside closes it, and does nothing else)
-		return true
-	for row: Array in _more_rows():
-		var opts: Array = row[2]
-		for i in range(opts.size()):
-			if not _seg_rect(row, i).grow(2).has_point(p):
-				continue
-			var k := String(opts[i][1])
-			match String(row[4]):
-				"time":
-					if k != _time_now():
-						_set_time_of_day(k)
-				"road":
-					if (k == "wet") != _wet:
-						_set_wet(k == "wet")
-				"style":
-					if k != _ap_style:
-						_set_ap_style(k)
-				"assist":
-					if (k == "on") != _assist:
-						_assist = k == "on"
-						_prefs_save()
-						_show_banner("steering assist " + k + (" when you drive" if _auto else ""), 1.2)
-						Probe.event("assist", {"on": _assist})
-				"act":
-					if k == "pause":
-						_toggle_pause()
-					elif k == "keys":
-						_more_open = false
-						_keys_open = true
-					elif k == "perf":
-						_toggle_perf()
-			return true
-	return true
-
-## a tap on one of the HUD's own buttons: done, and true; false if there is no button there
-func _hud_tap(p: Vector2) -> bool:
-	if _more_tap(p):
-		return true
-	match _hud_hit(p):
-		"resume", "pause":
-			_toggle_pause()
-		"show":
-			_hud_folded = false
-			_prefs_save()
-		"auto":
-			_auto_by_hand(not _auto)
-		"style":
-			_set_ap_style(AP_STYLES[(AP_STYLES.find(_ap_style_now()) + 1) % AP_STYLES.size()])
-		"goto":
-			_open_picker.call_deferred()   # after this click, so it does not hit the list
-		"walk":
-			_toggle_walk()
-		"more":
-			_more_open = true
-		"fold":
-			_hud_folded = true
-			_prefs_save()
-			_show_banner("buttons folded away: \"show\" brings them back", 1.6)
-		"view":
-			_next_view()
-		"map":
-			_toggle_map()
-		"perf":
-			if _perf_view or _drive_map._trace_view:   # (the drive map too: P and the drawer go round to it)
-				_drive_map._trace_view = false
-				_perf_view = false
-				_perf_lbl.visible = false
-			else:
-				_toggle_perf()
-		"look":
-			_head_look._toggle_look()
-		_:
-			return false
-	return true
-
-## the HUD's buttons showing now, by name -> their box (as _draw_hud draws them)
-func _hud_buttons() -> Dictionary:
-	var out := {}
-	if _paused and not _zoomed() and not _more_open:
-		out["resume"] = RESUME_BTN
-	if _hud_folded:
-		out["show"] = SHOW_BTN
-		return out
-	if not _walking:
-		out["auto"] = AUTO_BTN
-		if _auto:
-			out["style"] = STYLE_BTN
-	out["goto"] = GOTO_BTN
-	out["pause"] = PAUSE_BTN
-	out["walk"] = WALK_BTN
-	out["more"] = MORE_BTN
-	out["fold"] = FOLD_BTN
-	out["view"] = VIEW_BTN
-	out["perf"] = PERF_BTN
-	if _map_btn_shown():
-		out["map"] = MAP_BTN
-	if not _walking and not _auto:
-		out["look"] = HeadLook.LOOK_BTN
-	return out
-
-## Which button a tap at p is for, "" for none. A mouse must land on it (3 px to spare); a
-## finger has HIT_TOUCH px round each, and the nearest box wins where two reach -- the boxes
-## are drawn small (the user wanted the screen kept clear) but 22 px is about 4 mm on a phone
-## held sideways, under half a fingertip.
-const HIT_TOUCH := 10.0
-func _hud_hit(p: Vector2) -> String:
-	var slop := HIT_TOUCH if _touch_seen else 3.0
-	var best := ""
-	var best_d := INF
-	var btns := _hud_buttons()
-	for k: String in btns:
-		var r: Rect2 = btns[k]
-		var d := Vector2(maxf(0.0, maxf(r.position.x - p.x, p.x - r.end.x)), maxf(0.0, maxf(r.position.y - p.y, p.y - r.end.y))).length()
-		if d <= slop and d < best_d:
-			best = k
-			best_d = d
-	return best
-
-## is there a button (or the open drawer) under p? -- a touch there is the button's, not the
-## stick's or the view's (the button itself acts on the click the touch emulates)
-func _on_hud_button(p: Vector2) -> bool:
-	return _more_open or _keys_open or _hud_hit(p) != ""
-
-## The minimap's lines round a point, in metres from it: outlines, paths, minor and major
-## streets, the city limits, places. Gathered again only once the car is MAP_MOVE away,
-## not every frame (that was a few thousand points a frame, in script).
-const MAP_MOVE := 60.0
-var _map_lines := {}
-
-## The minimap's lines, sorted once (while the city loads) into squares of the map, in the
-## city's own coordinates: building outlines, paths, minor and major streets. Gathering the
-## ones round the car is then joining the squares' arrays, not walking every outline and
-## street in 360 m: that walk, every 60 m driven, was a stutter every few seconds.
-const MAP_CELL := 120.0
-var _map_cells := {}                 ## Vector2i -> {"blds", "paths", "minor", "major"}
-
-func _map_build_cells() -> void:
-	_map_cells = {}
-	var cell_of := func(p: Vector2) -> Dictionary:
-		var key := Vector2i(floori(p.x / MAP_CELL), floori(p.y / MAP_CELL))
-		if not _map_cells.has(key):
-			_map_cells[key] = {"blds": PackedVector2Array(), "paths": PackedVector2Array(),
-				"minor": PackedVector2Array(), "major": PackedVector2Array()}
-		return _map_cells[key]
-	for poly: PackedVector2Array in _blds:
-		if poly.is_empty():
-			continue
-		var out: PackedVector2Array = cell_of.call(poly[0])["blds"]
-		for j in range(poly.size()):
-			out.append(poly[j])
-			out.append(poly[(j + 1) % poly.size()])
-	for r: Dictionary in _roads:
-		var pts: PackedVector2Array = r["pts"]
-		var kind := "paths" if (not r["drive"] or r["pv"]) else ("major" if float(r["w"]) >= 9.0 else "minor")
-		for j in range(pts.size() - 1):
-			var out: PackedVector2Array = cell_of.call((pts[j] + pts[j + 1]) * 0.5)[kind]
-			out.append(pts[j])
-			out.append(pts[j + 1])
-
-## the lines round `at` (in the city's coordinates: "at" in the result is where they were
-## gathered, for knowing when to gather again)
-func _map_gather(at: Vector2, r: float) -> Dictionary:
-	if _map_cells.is_empty():
-		_map_build_cells()
-	var reach := r * 1.45 + MAP_MOVE * r / MAP_R   # the map's corners, wherever the car turns
-	# (plain local arrays: appending through `dict[k] as PackedVector2Array` goes to a copy)
-	var blds := PackedVector2Array()
-	var paths := PackedVector2Array()
-	var minor := PackedVector2Array()
-	var major := PackedVector2Array()
-	var c0 := Vector2i(floori((at.x - reach) / MAP_CELL), floori((at.y - reach) / MAP_CELL))
-	var c1 := Vector2i(floori((at.x + reach) / MAP_CELL), floori((at.y + reach) / MAP_CELL))
-	for cz in range(c0.y, c1.y + 1):
-		for cx in range(c0.x, c1.x + 1):
-			var cell: Dictionary = _map_cells.get(Vector2i(cx, cz), {})
-			if cell.is_empty():
-				continue
-			blds.append_array(cell["blds"])
-			paths.append_array(cell["paths"])
-			minor.append_array(cell["minor"])
-			major.append_array(cell["major"])
-	var limits: Array = []
-	for ring: PackedVector2Array in _boundary:
-		var pts := ring.duplicate()
-		pts.append(ring[0])
-		limits.append(pts)
-	var rails: PackedVector2Array = _rails.map_lines(at, reach) if _rails != null else PackedVector2Array()
-	var places: Array = []
-	for poi: Array in _pois:
-		var d: Vector2 = (poi[0] as Vector2) - at
-		if absf(d.x) < reach and absf(d.y) < reach:
-			places.append([poi[0], poi[1]])
-	return {"at": at, "r": r, "blds": blds, "paths": paths, "minor": minor, "major": major, "rails": rails,
-		"limits": limits, "places": places}
-
-## the minimap: streets and building outlines round the car, heading up
-func _draw_map() -> void:
-	var t0 := Time.get_ticks_usec()
-	_draw_map_inner()
-	_prof["minimap"] = int(_prof.get("minimap", 0)) + Time.get_ticks_usec() - t0
-
-func _draw_map_inner() -> void:
-	var sz := _map.size
-	var ink := Palette.col("ink")
-	var bg := Palette.col("bg")
-	_map.draw_rect(Rect2(Vector2.ZERO, sz), Color(bg, 0.72))
-	# the view from above: the map follows it -- centred where you look, turned as the screen
-	# is, wide enough to hold the ground on screen (outlined below); the usual map otherwise
-	var zw := smoothstep(0.0, ZOOM_BLEND, _zoom_v) if _zoomed() else 0.0
-	var mid := _view_pos + _zoom_off * zw
-	var yaw := lerp_angle(_view_yaw, _zoom_yaw, zw)
-	var r := MAP_R
-	var foot := PackedVector2Array()
-	if zw > 0.0:
-		foot = _view_footprint()
-		var far := 0.0
-		for q: Vector2 in foot:
-			far = maxf(far, q.distance_to(mid))
-		r = lerpf(MAP_R, maxf(MAP_R, far * 1.2), zw)
-	if _map_lines.is_empty() or (_map_lines["at"] as Vector2).distance_to(mid) > MAP_MOVE * r / MAP_R \
-			or r > float(_map_lines["r"]) or r < float(_map_lines["r"]) * 0.5:
-		_map_lines = _map_gather(mid, r * 1.3 if r > MAP_R else MAP_R)   # (growing: some to spare)
-	var at := Vector2.ZERO   # the lines are in the city's own coordinates
-	var s := sz.x * 0.5 / r
-	# heading up round the middle of the map, the car in the middle
-	var xf := Transform2D(-PI * 0.5 - yaw, Vector2(s, s), 0.0, sz * 0.5) * Transform2D(0.0, -mid)
-	_map.draw_set_transform_matrix(xf)
-	if r < 450.0 and not (_map_lines["blds"] as PackedVector2Array).is_empty():   # (wider: a grey blur)
-		# plain one-pixel lines: wide ones are rebuilt as strips every frame, and the outlines
-		# are most of the map's lines
-		_map.draw_multiline(_map_lines["blds"], Color(ink, 0.3), -1.0)
-	if not (_map_lines["paths"] as PackedVector2Array).is_empty():
-		_map.draw_multiline(_map_lines["paths"], Color(ink, 0.3), 1.0 / s)
-	if not (_map_lines.get("rails", PackedVector2Array()) as PackedVector2Array).is_empty():   # a railway: light on dark
-		_map.draw_multiline(_map_lines["rails"], Color(bg, 0.9), 3.0 / s)
-		_map.draw_multiline(_map_lines["rails"], Color(ink, 0.6), 1.0 / s)
-	if not (_map_lines["minor"] as PackedVector2Array).is_empty():
-		_map.draw_multiline(_map_lines["minor"], Color(ink, 0.75), 2.0 / s)
-	if not (_map_lines["major"] as PackedVector2Array).is_empty():
-		_map.draw_multiline(_map_lines["major"], Palette.col("warn"), 3.0 / s)
-	for pts: PackedVector2Array in _map_lines["limits"]:
-		_map.draw_polyline(pts, Color(Palette.col("accent"), 0.8), 1.5 / s)
-	var rim := _bounds.grow(-EDGE)
-	var deep := rim.grow(-r * 1.5)   # (a map wider than the town: no inside at all)
-	if deep.size.x <= 0.0 or deep.size.y <= 0.0 or not deep.has_point(mid):   # the map's edge, when it is in view
-		_map.draw_polyline(PackedVector2Array([rim.position - at, Vector2(rim.end.x, rim.position.y) - at, rim.end - at,
-			Vector2(rim.position.x, rim.end.y) - at, rim.position - at]), Palette.col("hazard"), 3.0 / s)
-	if _auto and _ap_pts.size() > 1:
-		var route := PackedVector2Array()
-		for p in _ap_pts:
-			route.append(p - at)
-		# as a navigation app draws it: wider than any road, in the destination's own colour
-		# (the line leads to the dot), on a dark edge that parts it from whatever road is under
-		# it. (A thin line in the palette's mint, 1.5 px, was lost among the yellow main roads,
-		# the white streets and the white dots of the traffic.)
-		var col := Palette.col("accent")
-		_map.draw_polyline(route, Color(bg, 0.95), 7.0 / s)
-		_map.draw_polyline(route, col, 4.0 / s)
-		for p: Vector2 in [route[0], route[route.size() - 1]]:   # (round ends, not cut-off ones)
-			_map.draw_circle(p, 3.5 / s, Color(bg, 0.95))
-			_map.draw_circle(p, 2.0 / s, col)
-	for pl: Array in _map_lines["places"]:
-		_map.draw_circle(pl[0], 1.8 / s, Palette.col(pl[1]))
-	if _traffic != null:
-		for c in _traffic.cars:
-			if c.alive:
-				_map.draw_circle(c.pos - at, 1.9 / s, Color(ink, 0.8))
-	if _walking:
-		_map.draw_rect(Rect2(_car_at - at - Vector2(3, 3) / s, Vector2(6, 6) / s), Palette.col("warn"))
-	if _dest_on:
-		_map.draw_circle(_dest - at, 6.0 / s, Palette.col("accent"))
-		_map.draw_arc(_dest - at, 11.0 / s, 0.0, TAU, 24, Color(Palette.col("accent"), 0.6), 1.5 / s)
-	if foot.size() == 4:   # what is on the screen
-		_map.draw_colored_polygon(foot, Color(Palette.col("player"), 0.13 * zw))
-		var ring := foot.duplicate()
-		ring.append(foot[0])
-		_map.draw_polyline(ring, Color(Palette.col("player"), 0.85 * zw), 1.5 / s)
-	_map.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	# you: in the middle and heading up, or (the view dragged away) where you are, or an
-	# arrow on the map's edge pointing there
-	var me := xf * _view_pos
-	var fw := (xf.basis_xform(Vector2(cos(_view_yaw), sin(_view_yaw)))).normalized()
-	var sd := Vector2(-fw.y, fw.x)
-	var box := Rect2(Vector2.ZERO, sz).grow(-7.0)
-	if not box.has_point(me):
-		var c := sz * 0.5
-		var d := me - c
-		var k := minf(absf(box.size.x * 0.5 / d.x) if d.x != 0.0 else INF, absf(box.size.y * 0.5 / d.y) if d.y != 0.0 else INF)
-		me = c + d * k
-		fw = d.normalized()
-		sd = Vector2(-fw.y, fw.x)
-	_map.draw_colored_polygon(PackedVector2Array([me + fw * 7.0, me - fw * 5.0 + sd * 5.0, me - fw * 5.0 - sd * 5.0]), Palette.col("player"))
-	_map.draw_rect(Rect2(Vector2.ZERO, sz), Color(ink, 0.5), false, 1.0)
-
-## the ground on screen: where the four corners of the view meet it, in the city's metres
-## (empty if a corner looks above the horizon)
-func _view_footprint() -> PackedVector2Array:
-	var y := _h(_view_pos + _zoom_off)
-	var out := PackedVector2Array()
-	for sc: Vector2 in [play_area.position, Vector2(play_area.end.x, play_area.position.y), play_area.end,
-			Vector2(play_area.position.x, play_area.end.y)]:
-		var g := ground_point(sc, y)
-		if g == Vector3.INF:
-			return PackedVector2Array()
-		out.append(Vector2(g.x, g.z))
-	return out
+## ---- the minimap: the streets round the car, gathered by squares of the map ---------------
+## In `minimap.gd` (`Minimap`, made once: `_minimap`).
+const Minimap := preload("res://game/streets/minimap.gd")
+var _minimap := Minimap.new(self)
 
 ## ---- touch: one stick that stays put on the right -- thumb on it, drag up for gas, down
 ## to brake (and reverse once stopped), sideways to steer; let go and it centres. Grabbing
@@ -26075,7 +25323,7 @@ func _input(event: InputEvent) -> void:
 					_zoom_set(0.0 if _zoom > 0.0 else ZOOM_UP)
 					return
 				KEY_M:   # the map button's (MAP_BTN)
-					_toggle_map()
+					_hud_kit._toggle_map()
 					return
 				KEY_MINUS, KEY_KP_SUBTRACT:
 					_zoom_by(ZOOM_STEP)
@@ -26136,9 +25384,9 @@ func _input(event: InputEvent) -> void:
 					if _cross_rect(i, (_cross["ways"] as Array).size()).grow(3).has_point(mb.position):
 						_cross_pick(i)
 						return
-			if _hud_tap(mb.position):
+			if _hud_kit._hud_tap(mb.position):
 				pass
-			elif _perf_view and PERF_RECT.has_point(mb.position):
+			elif _perf_view and PerfView.PERF_RECT.has_point(mb.position):
 				_toggle_perf()
 			elif _drive_map._trace_view and DriveMap.TRACE_SAVE.grow(3).has_point(mb.position):
 				_drive_map._save_log()
@@ -26156,7 +25404,7 @@ func _input(event: InputEvent) -> void:
 			_keep_screen_on(true)
 		_touch_seen = true
 		if t.pressed:
-			if _on_hud_button(t.position) \
+			if _hud_kit._on_hud_button(t.position) \
 					or (_drive_map._trace_view and DriveMap.TRACE_RECT.has_point(t.position)) \
 					or t.position.y < 36.0:
 				return   # the button (via its emulated click) and the shell's menu/sound row

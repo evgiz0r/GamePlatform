@@ -64,8 +64,8 @@ func _run() -> void:
 			shot += 1
 		last_i = sc.i
 		frames += 1
-		if String(g._prof_avg) != last_avg:
-			last_avg = String(g._prof_avg)
+		if String(g._perf._prof_avg) != last_avg:
+			last_avg = String(g._perf._prof_avg)
 			var rx := RegEx.create_from_string("script ([0-9.]+)")
 			var m := rx.search(last_avg)
 			if m != null:

@@ -174,7 +174,9 @@ def rewrite(lines, spans, lo, hi, names, prefix_of, warn, label):
                 k = s - 1
                 while k >= 0 and l[k] in ' \t':
                     k -= 1
-                if k >= 0 and l[k] in '.$%&^@':
+                if k >= 0 and l[k] == '.':
+                    continue
+                if s > 0 and l[s - 1] in '$%&^@':   # $Node, %Unique, &"name"... (not 'a % b')
                     continue
                 if decl and decl.start(2) == s:
                     continue
@@ -341,7 +343,7 @@ def main():
             return m.group(1) + '.' + (cname if moved[t][0] == 'const' else vname) + '.' + t
         new = re.sub(r'\b(g|game|_g|G)\.([A-Za-z_]\w*)\b', sub, src)
         # an earlier split's module reaching a const of the game: Streets.NAME
-        new = re.sub(r'\bStreets\.([A-Za-z_]\w*)\b', lambda m: (cname + '.' + m.group(1)) if m.group(1) in moved and moved[m.group(1)][0] == 'const' else m.group(0), new)
+        new = re.sub(r'\bStreets\.([A-Za-z_]\w*)\b', lambda m: ('Streets.' + cname + '.' + m.group(1)) if m.group(1) in moved and moved[m.group(1)][0] == 'const' else m.group(0), new)
         if new != src:
             others[f] = new
         for t in moved:

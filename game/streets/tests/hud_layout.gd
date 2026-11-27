@@ -26,12 +26,12 @@ func _ok(what: String, ok: bool) -> void:
 		fails += 1
 
 func _tap(r: Rect2) -> void:
-	g._hud_tap(r.get_center())
+	g._hud_kit._hud_tap(r.get_center())
 	await process_frame
 
 ## every button showing now, by name (the game's own list: what it draws and hit-tests)
 func _shown() -> Dictionary:
-	return g._hud_buttons()
+	return g._hud_kit._hud_buttons()
 
 func _rect_circle(r: Rect2, c: Vector2, rad: float) -> bool:
 	return c.distance_to(c.clamp(r.position, r.end)) < rad
@@ -45,7 +45,7 @@ func _check_layout(state: String) -> void:
 		others["load line"] = Rect2(g._load_lbl.position, Vector2(g._load_lbl.get_minimum_size().x, 12))
 	if g._perf_view:   # (the panel the perf button opens under itself, and its graph: the button first sat on it)
 		others["perf view"] = Rect2(g._perf_lbl.position, g._perf_lbl.get_combined_minimum_size().max(g._perf_lbl.size))
-		others["frame graph"] = g.PERF_GRAPH
+		others["frame graph"] = g.PerfView.PERF_GRAPH
 	if g._touch_seen:
 		others["stick"] = Rect2(g.STICK_C - Vector2.ONE * (g.STICK_R + 5.0), Vector2.ONE * (g.STICK_R + 5.0) * 2.0)
 	var bad: Array = []
@@ -61,7 +61,7 @@ func _check_layout(state: String) -> void:
 			if a.intersects(others[o]):
 				bad.append("%s on the %s" % [names[i], o])
 		# a finger's reach (HIT_TOUCH round it) kept off the stick's ring, which a touch there is for
-		if g._touch_seen and _rect_circle(a.grow(g.HIT_TOUCH), g.STICK_C, g.STICK_R + 5.0):
+		if g._touch_seen and _rect_circle(a.grow(g.HudButtons.HIT_TOUCH), g.STICK_C, g.STICK_R + 5.0):
 			bad.append("%s's reach on the stick" % names[i])
 	_ok("%s: %d buttons, none overlapping %s" % [state, names.size(), bad], bad.is_empty())
 
@@ -69,10 +69,10 @@ func _check_layout(state: String) -> void:
 ## unless another button's box is nearer there (then that one's); and a mouse needs the box
 func _touch_hits() -> void:
 	var bad: Array = []
-	var btn: Dictionary = g._hud_buttons()
+	var btn: Dictionary = g._hud_kit._hud_buttons()
 	for k: String in btn:
 		var r: Rect2 = btn[k]
-		if g._hud_hit(r.get_center()) != k:
+		if g._hud_kit._hud_hit(r.get_center()) != k:
 			bad.append("%s's middle" % k)
 		for off: Vector2 in [Vector2(0, -r.size.y * 0.5 - 8), Vector2(0, r.size.y * 0.5 + 8), Vector2(-r.size.x * 0.5 - 8, 0), Vector2(r.size.x * 0.5 + 8, 0)]:
 			var q := r.get_center() + off
@@ -81,12 +81,12 @@ func _touch_hits() -> void:
 				var ro: Rect2 = btn[o]
 				if o != k and ro.grow(8.0).has_point(q):
 					near = ""   # (another as near or nearer: either may win)
-			if near != "" and g._hud_hit(q) != k:
-				bad.append("%s 8 px out %s: %s" % [k, off, g._hud_hit(q)])
+			if near != "" and g._hud_kit._hud_hit(q) != k:
+				bad.append("%s 8 px out %s: %s" % [k, off, g._hud_kit._hud_hit(q)])
 	_ok("a finger 8 px off a button still gets it %s" % [bad], bad.is_empty())
 	g._touch_seen = false
 	var r0: Rect2 = btn["goto"]
-	_ok("a mouse 8 px off does not", g._hud_hit(r0.get_center() + Vector2(0, -r0.size.y * 0.5 - 8)) == "")
+	_ok("a mouse 8 px off does not", g._hud_kit._hud_hit(r0.get_center() + Vector2(0, -r0.size.y * 0.5 - 8)) == "")
 	g._touch_seen = true
 
 func _run() -> void:
@@ -134,16 +134,16 @@ func _run() -> void:
 	# the drawer
 	await _tap(g.MORE_BTN)
 	_ok("more opens the drawer", g._more_open)
-	g._mouse_at = g._seg_rect(g._more_rows()[0], 2).get_center()   # a mouse over "night": filled as hovered
+	g._mouse_at = g._hud_kit._seg_rect(g._hud_kit._more_rows()[0], 2).get_center()   # a mouse over "night": filled as hovered
 	await _snap("hud_more")
 	g._mouse_at = Vector2.INF
-	var rows: Array = g._more_rows()
-	await _tap(g._seg_rect(rows[2], 1))   # autodrive: green wave
+	var rows: Array = g._hud_kit._more_rows()
+	await _tap(g._hud_kit._seg_rect(rows[2], 1))   # autodrive: green wave
 	_ok("the drawer's green wave: wave on, racer off", g._wave.on and not g._racing() and g._ap_style == "wave")
-	await _tap(g._seg_rect(rows[2], 2))   # back to racer
-	await _tap(g._seg_rect(rows[1], 1))   # wet
+	await _tap(g._hud_kit._seg_rect(rows[2], 2))   # back to racer
+	await _tap(g._hud_kit._seg_rect(rows[1], 1))   # wet
 	_ok("the drawer's wet", g._wet)
-	await _tap(g._seg_rect(rows[0], 2))   # night: through evening
+	await _tap(g._hud_kit._seg_rect(rows[0], 2))   # night: through evening
 	var t := 0.0
 	while (g._tod_busy or not g._night) and t < 20.0:
 		await create_timer(0.25).timeout
@@ -158,20 +158,20 @@ func _run() -> void:
 	_check_layout("night, you drive")
 	# the keys card
 	await _tap(g.MORE_BTN)
-	rows = g._more_rows()
-	await _tap(g._seg_rect(rows[4], 1))
+	rows = g._hud_kit._more_rows()
+	await _tap(g._hud_kit._seg_rect(rows[4], 1))
 	_ok("keys opens the keys card", g._keys_open and not g._more_open)
 	await _snap("hud_keys")
 	await _tap(Rect2(320, 180, 1, 1))
 	_ok("a tap closes the keys card", not g._keys_open)
 	# pause from the drawer, resume from the screen
 	await _tap(g.MORE_BTN)
-	rows = g._more_rows()
-	await _tap(g._seg_rect(rows[4], 0))
+	rows = g._hud_kit._more_rows()
+	await _tap(g._hud_kit._seg_rect(rows[4], 0))
 	await _tap(Rect2(300, 345, 1, 1))
 	_ok("paused from the drawer", g._paused)
 	_check_layout("paused")
-	await _tap(g.RESUME_BTN)
+	await _tap(g.HudButtons.RESUME_BTN)
 	_ok("resume on screen", not g._paused)
 	# pause on the main screen (the user, 23 Nov): autodrive moving, a tap holds the car and
 	# the traffic still, the same button lets them go on
@@ -194,11 +194,11 @@ func _run() -> void:
 	_ok("the pause button resumes, the car going on (%.1f m)" % g._pos.distance_to(car0), not g._paused and g._pos.distance_to(car0) > 1.0)
 	await _tap(g.AUTO_BTN)
 	# the camera: chase, seat, chase
-	var views: Array = [g._view_name()]
+	var views: Array = [g._hud_kit._view_name()]
 	for i in range(2):
 		await _tap(g.VIEW_BTN)
 		await create_timer(0.6).timeout
-		views.append(g._view_name())
+		views.append(g._hud_kit._view_name())
 	_ok("the camera goes round %s" % [views], views == ["chase", "seat", "chase"])
 	await create_timer(1.0).timeout
 	# the map button: up over the city, paused; dragged about; back down, the city going on
@@ -210,7 +210,7 @@ func _run() -> void:
 	await _snap("hud_map")
 	_check_layout("map")
 	await _tap(g.VIEW_BTN)
-	_ok("map: the camera button picks the landing (%s)" % g._view_name(), g._view_name() == "seat")
+	_ok("map: the camera button picks the landing (%s)" % g._hud_kit._view_name(), g._hud_kit._view_name() == "seat")
 	await _tap(g.VIEW_BTN)
 	await _tap(g.MAP_BTN)
 	t = 0.0

@@ -159,7 +159,7 @@ func _run() -> void:
 	g._set_auto(true)
 	for i in range(3):
 		await create_timer(4.0).timeout
-	print("script while driving: %s" % g._prof_avg)
+	print("script while driving: %s" % g._perf._prof_avg)
 	# the scene's totals, once the rest of the city is built (STREETS_BUILD_ALL=0: as in the
 	# game, the start's squares behind the loading text and the rest while driving -- only
 	# those are indexed, see _index_into)
